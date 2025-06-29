@@ -9,9 +9,8 @@ to a local database using SQLAlchemy.
 import os
 import sys
 import time
-import logging
-import requests
 from datetime import datetime, timedelta
+import logging
 
 from mercury_bank_api import MercuryBankAPIClient  # type: ignore[import]
 from sqlalchemy.orm import Session
@@ -96,7 +95,7 @@ class MercuryBankSyncer:
         Sync accounts from Mercury Bank API to database for all active Mercury account groups.
 
         Iterates through all active MercuryAccount groups, fetches accounts from each
-        Mercury Bank API, and synchronizes them with the local database. Creates new 
+        Mercury Bank API, and synchronizes them with the local database. Creates new
         accounts if they don't exist, or updates existing accounts with the latest data.
 
         Returns:
@@ -106,32 +105,40 @@ class MercuryBankSyncer:
             SQLAlchemyError: If database operations fail
             Exception: If API calls or other operations fail
         """
-        logger.info("Starting account synchronization for all Mercury account groups...")
+        logger.info(
+            "Starting account synchronization for all Mercury account groups..."
+        )
 
         db = self.get_db_session()
         total_synced_count = 0
 
         try:
             # Get all active Mercury account groups
-            mercury_accounts = db.query(MercuryAccount).filter(
-                MercuryAccount.is_active == True,
-                MercuryAccount.sync_enabled == True
-            ).all()
+            mercury_accounts = (
+                db.query(MercuryAccount)
+                .filter(
+                    MercuryAccount.is_active == True,
+                    MercuryAccount.sync_enabled == True,
+                )
+                .all()
+            )
 
             if not mercury_accounts:
-                logger.warning("No active Mercury account groups found for synchronization")
+                logger.warning(
+                    "No active Mercury account groups found for synchronization"
+                )
                 return 0
 
             logger.info("Found %d active Mercury account groups", len(mercury_accounts))
 
             for mercury_account in mercury_accounts:
                 logger.info("Syncing accounts for group: %s", mercury_account.name)
-                
+
                 try:
                     # Create API client for this Mercury account group
                     mercury_api = MercuryBankAPIClient(
                         api_token=mercury_account.api_key,
-                        sandbox=mercury_account.sandbox_mode
+                        sandbox=mercury_account.sandbox_mode,
                     )
 
                     # Fetch accounts from Mercury API
@@ -141,7 +148,9 @@ class MercuryBankSyncer:
                     for account_data in accounts_data:
                         account_id = self._safe_get(account_data, "id")
                         if not account_id:
-                            logger.warning("Skipping account without ID: %s", account_data)
+                            logger.warning(
+                                "Skipping account without ID: %s", account_data
+                            )
                             continue
 
                         # Check if account exists
@@ -212,7 +221,9 @@ class MercuryBankSyncer:
                                 available_balance=self._safe_get(
                                     account_data, "availableBalance"
                                 ),
-                                currency=self._safe_get(account_data, "currency", "USD"),
+                                currency=self._safe_get(
+                                    account_data, "currency", "USD"
+                                ),
                                 kind=self._safe_get(account_data, "kind"),
                                 nickname=self._safe_get(account_data, "nickname"),
                                 legal_business_name=self._safe_get(
@@ -225,15 +236,25 @@ class MercuryBankSyncer:
                         synced_count += 1
 
                     total_synced_count += synced_count
-                    
-                    logger.info("Successfully synced %d accounts for group: %s", synced_count, mercury_account.name)
+
+                    logger.info(
+                        "Successfully synced %d accounts for group: %s",
+                        synced_count,
+                        mercury_account.name,
+                    )
 
                 except (ValueError, SQLAlchemyError) as e:
-                    logger.error("Error syncing accounts for group %s: %s", mercury_account.name, e)
+                    logger.error(
+                        "Error syncing accounts for group %s: %s",
+                        mercury_account.name,
+                        e,
+                    )
                     continue  # Continue with next Mercury account group
 
             db.commit()
-            logger.info("Total accounts synced across all groups: %d", total_synced_count)
+            logger.info(
+                "Total accounts synced across all groups: %d", total_synced_count
+            )
             return total_synced_count
 
         except SQLAlchemyError as e:
@@ -287,25 +308,34 @@ class MercuryBankSyncer:
 
                     # Skip accounts without a mercury_account_id
                     if not account.mercury_account_id:
-                        logger.warning("Account %s has no mercury_account_id, skipping", account.id)
+                        logger.warning(
+                            "Account %s has no mercury_account_id, skipping", account.id
+                        )
                         continue
 
                     # Get the Mercury account group for this account
-                    mercury_account = db.query(MercuryAccount).filter(
-                        MercuryAccount.id == account.mercury_account_id,
-                        MercuryAccount.is_active == True,
-                        MercuryAccount.sync_enabled == True
-                    ).first()
+                    mercury_account = (
+                        db.query(MercuryAccount)
+                        .filter(
+                            MercuryAccount.id == account.mercury_account_id,
+                            MercuryAccount.is_active == True,
+                            MercuryAccount.sync_enabled == True,
+                        )
+                        .first()
+                    )
 
                     if not mercury_account:
-                        logger.warning("No active Mercury account group found for account %s", account.id)
+                        logger.warning(
+                            "No active Mercury account group found for account %s",
+                            account.id,
+                        )
                         continue
 
                     try:
                         # Create API client for this Mercury account group
                         mercury_api = MercuryBankAPIClient(
                             api_token=mercury_account.api_key,
-                            sandbox=mercury_account.sandbox_mode
+                            sandbox=mercury_account.sandbox_mode,
                         )
 
                         # Try to get transactions using the library first
