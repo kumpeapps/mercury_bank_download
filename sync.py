@@ -394,9 +394,9 @@ class MercuryBankSyncer:
                             failed_at = None
                             created_at = None
 
-                            # Handle postedAt field
-                            posted_at_raw = self._safe_get(transaction_data, "postedAt")
-                            if posted_at_raw:
+                            if posted_at_raw := self._safe_get(
+                                transaction_data, "postedAt"
+                            ):
                                 try:
                                     if isinstance(posted_at_raw, datetime):
                                         posted_at = posted_at_raw
