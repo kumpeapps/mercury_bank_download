@@ -10,14 +10,14 @@ import os
 import sys
 import time
 import logging
-import requests  # type: ignore[import]
+import requests
 from datetime import datetime, timedelta
 
 from mercury_bank_api import MercuryBankAPIClient  # type: ignore[import]
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
-from models import Account, Transaction
+from models import Account, Transaction, MercuryAccount
 from models.base import create_engine_and_session, init_db
 
 # Configure logging
@@ -38,12 +38,11 @@ class MercuryBankSyncer:
     Mercury Bank API synchronization service.
 
     This class handles synchronization of accounts and transactions from the Mercury Bank API
-    to a local database. It provides methods to sync accounts, transactions, and run complete
+    to a local database. It iterates through all active Mercury account groups and syncs
+    data for each one. It provides methods to sync accounts, transactions, and run complete
     synchronization cycles.
 
     Attributes:
-        api_key (str): Mercury Bank API key from environment variables
-        mercury_api (MercuryBankAPIClient): Mercury Bank API client instance
         engine: SQLAlchemy database engine
         session_local: SQLAlchemy session factory
     """
@@ -52,21 +51,10 @@ class MercuryBankSyncer:
         """
         Initialize the Mercury Bank syncer.
 
-        Sets up the API client, database connection, and initializes database tables.
-
-        Raises:
-            ValueError: If MERCURY_API_KEY environment variable is not set
+        Sets up the database connection and initializes database tables.
+        No longer requires a single API key as it will iterate through all
+        Mercury account groups stored in the database.
         """
-        self.api_key = os.getenv("MERCURY_API_KEY")
-        if not self.api_key:
-            raise ValueError("MERCURY_API_KEY environment variable is required")
-        sandbox_mode: bool = (  # type: ignore
-            os.getenv("MERCURY_SANDBOX_MODE", "false").lower() == "true"
-        )
-        self.mercury_api = MercuryBankAPIClient(
-            api_token=self.api_key, sandbox=sandbox_mode
-        )
-
         # Initialize database
         self.engine, self.session_local = create_engine_and_session()
         init_db()
@@ -105,131 +93,159 @@ class MercuryBankSyncer:
 
     def sync_accounts(self) -> int:
         """
-        Sync accounts from Mercury Bank API to database.
+        Sync accounts from Mercury Bank API to database for all active Mercury account groups.
 
-        Fetches all accounts from the Mercury Bank API and synchronizes them with the local
-        database. Creates new accounts if they don't exist, or updates existing accounts
-        with the latest data from the API.
+        Iterates through all active MercuryAccount groups, fetches accounts from each
+        Mercury Bank API, and synchronizes them with the local database. Creates new 
+        accounts if they don't exist, or updates existing accounts with the latest data.
 
         Returns:
-            int: Number of accounts successfully synchronized
+            int: Total number of accounts successfully synchronized across all groups
 
         Raises:
             SQLAlchemyError: If database operations fail
             Exception: If API calls or other operations fail
         """
-        logger.info("Starting account synchronization...")
+        logger.info("Starting account synchronization for all Mercury account groups...")
+
+        db = self.get_db_session()
+        total_synced_count = 0
 
         try:
-            # Fetch accounts from Mercury API
-            accounts_data = self.mercury_api.get_accounts()
+            # Get all active Mercury account groups
+            mercury_accounts = db.query(MercuryAccount).filter(
+                MercuryAccount.is_active == True,
+                MercuryAccount.sync_enabled == True
+            ).all()
 
-            db = self.get_db_session()
-            synced_count = 0
+            if not mercury_accounts:
+                logger.warning("No active Mercury account groups found for synchronization")
+                return 0
 
-            try:
-                for account_data in accounts_data:
-                    account_id = self._safe_get(account_data, "id")
-                    if not account_id:
-                        logger.warning("Skipping account without ID: %s", account_data)
-                        continue
+            logger.info("Found %d active Mercury account groups", len(mercury_accounts))
 
-                    # Check if account exists
-                    existing_account = (
-                        db.query(Account).filter(Account.id == account_id).first()
+            for mercury_account in mercury_accounts:
+                logger.info("Syncing accounts for group: %s", mercury_account.name)
+                
+                try:
+                    # Create API client for this Mercury account group
+                    mercury_api = MercuryBankAPIClient(
+                        api_token=mercury_account.api_key,
+                        sandbox=mercury_account.sandbox_mode
                     )
 
-                    if existing_account:
-                        # Update existing account
-                        existing_account.name = self._safe_get(
-                            account_data, "name", existing_account.name
-                        )
-                        existing_account.account_number = (
-                            self._safe_get(account_data, "accountNumber")
-                            or existing_account.account_number
-                        )
-                        existing_account.routing_number = self._safe_get(
-                            account_data,
-                            "routingNumber",
-                            existing_account.routing_number,
-                        )
-                        existing_account.account_type = self._safe_get(
-                            account_data, "type", existing_account.account_type
-                        )
-                        existing_account.status = self._safe_get(
-                            account_data, "status", existing_account.status
-                        )
-                        existing_account.balance = self._safe_get(
-                            account_data, "currentBalance", existing_account.balance
-                        )
-                        existing_account.available_balance = self._safe_get(
-                            account_data,
-                            "availableBalance",
-                            existing_account.available_balance,
-                        )
-                        existing_account.currency = self._safe_get(
-                            account_data, "currency", existing_account.currency
-                        )
-                        existing_account.kind = self._safe_get(
-                            account_data, "kind", existing_account.kind
-                        )
-                        existing_account.nickname = self._safe_get(
-                            account_data, "nickname", existing_account.nickname
-                        )
-                        existing_account.legal_business_name = self._safe_get(
-                            account_data,
-                            "legalBusinessName",
-                            existing_account.legal_business_name,
+                    # Fetch accounts from Mercury API
+                    accounts_data = mercury_api.get_accounts()
+                    synced_count = 0
+
+                    for account_data in accounts_data:
+                        account_id = self._safe_get(account_data, "id")
+                        if not account_id:
+                            logger.warning("Skipping account without ID: %s", account_data)
+                            continue
+
+                        # Check if account exists
+                        existing_account = (
+                            db.query(Account).filter(Account.id == account_id).first()
                         )
 
-                        logger.info("Updated account: %s", account_id)
-                    else:
-                        # Create new account
-                        new_account = Account(
-                            id=account_id,
-                            name=self._safe_get(account_data, "name", ""),
-                            account_number=self._safe_get(
-                                account_data, "accountNumber"
-                            ),
-                            routing_number=self._safe_get(
-                                account_data, "routingNumber"
-                            ),
-                            account_type=self._safe_get(account_data, "type"),
-                            status=self._safe_get(account_data, "status"),
-                            balance=self._safe_get(account_data, "currentBalance"),
-                            available_balance=self._safe_get(
-                                account_data, "availableBalance"
-                            ),
-                            currency=self._safe_get(account_data, "currency", "USD"),
-                            kind=self._safe_get(account_data, "kind"),
-                            nickname=self._safe_get(account_data, "nickname"),
-                            legal_business_name=self._safe_get(
-                                account_data, "legalBusinessName"
-                            ),
-                        )
-                        db.add(new_account)
-                        logger.info("Created new account: %s", account_id)
+                        if existing_account:
+                            # Update existing account
+                            existing_account.mercury_account_id = mercury_account.id
+                            existing_account.name = self._safe_get(
+                                account_data, "name", existing_account.name
+                            )
+                            existing_account.account_number = (
+                                self._safe_get(account_data, "accountNumber")
+                                or existing_account.account_number
+                            )
+                            existing_account.routing_number = self._safe_get(
+                                account_data,
+                                "routingNumber",
+                                existing_account.routing_number,
+                            )
+                            existing_account.account_type = self._safe_get(
+                                account_data, "type", existing_account.account_type
+                            )
+                            existing_account.status = self._safe_get(
+                                account_data, "status", existing_account.status
+                            )
+                            existing_account.balance = self._safe_get(
+                                account_data, "currentBalance", existing_account.balance
+                            )
+                            existing_account.available_balance = self._safe_get(
+                                account_data,
+                                "availableBalance",
+                                existing_account.available_balance,
+                            )
+                            existing_account.currency = self._safe_get(
+                                account_data, "currency", existing_account.currency
+                            )
+                            existing_account.kind = self._safe_get(
+                                account_data, "kind", existing_account.kind
+                            )
+                            existing_account.nickname = self._safe_get(
+                                account_data, "nickname", existing_account.nickname
+                            )
+                            existing_account.legal_business_name = self._safe_get(
+                                account_data,
+                                "legalBusinessName",
+                                existing_account.legal_business_name,
+                            )
 
-                    synced_count += 1
+                            logger.info("Updated account: %s", account_id)
+                        else:
+                            # Create new account
+                            new_account = Account(
+                                id=account_id,
+                                mercury_account_id=mercury_account.id,
+                                name=self._safe_get(account_data, "name", ""),
+                                account_number=self._safe_get(
+                                    account_data, "accountNumber"
+                                ),
+                                routing_number=self._safe_get(
+                                    account_data, "routingNumber"
+                                ),
+                                account_type=self._safe_get(account_data, "type"),
+                                status=self._safe_get(account_data, "status"),
+                                balance=self._safe_get(account_data, "currentBalance"),
+                                available_balance=self._safe_get(
+                                    account_data, "availableBalance"
+                                ),
+                                currency=self._safe_get(account_data, "currency", "USD"),
+                                kind=self._safe_get(account_data, "kind"),
+                                nickname=self._safe_get(account_data, "nickname"),
+                                legal_business_name=self._safe_get(
+                                    account_data, "legalBusinessName"
+                                ),
+                            )
+                            db.add(new_account)
+                            logger.info("Created new account: %s", account_id)
 
-                db.commit()
-                logger.info("Successfully synced %d accounts", synced_count)
-                return synced_count
+                        synced_count += 1
 
-            except SQLAlchemyError as e:
-                db.rollback()
-                logger.error("Database error during account sync: %s", e)
-                raise
-            except Exception as e:
-                db.rollback()
-                logger.error("Unexpected error during account sync: %s", e)
-                raise
-            finally:
-                db.close()
+                    total_synced_count += synced_count
+                    
+                    logger.info("Successfully synced %d accounts for group: %s", synced_count, mercury_account.name)
 
-        except Exception as e:
-            logger.error("Failed to sync accounts: %s", e)
+                except (ValueError, SQLAlchemyError) as e:
+                    logger.error("Error syncing accounts for group %s: %s", mercury_account.name, e)
+                    continue  # Continue with next Mercury account group
+
+            db.commit()
+            logger.info("Total accounts synced across all groups: %d", total_synced_count)
+            return total_synced_count
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error("Database error during account sync: %s", e)
             raise
+        except Exception as e:
+            db.rollback()
+            logger.error("Unexpected error during account sync: %s", e)
+            raise
+        finally:
+            db.close()
 
     def sync_transactions(self, days_back: int = 30) -> int:
         """
@@ -269,10 +285,32 @@ class MercuryBankSyncer:
                 for account in accounts:
                     logger.info("Syncing transactions for account: %s", account.id)
 
+                    # Skip accounts without a mercury_account_id
+                    if not account.mercury_account_id:
+                        logger.warning("Account %s has no mercury_account_id, skipping", account.id)
+                        continue
+
+                    # Get the Mercury account group for this account
+                    mercury_account = db.query(MercuryAccount).filter(
+                        MercuryAccount.id == account.mercury_account_id,
+                        MercuryAccount.is_active == True,
+                        MercuryAccount.sync_enabled == True
+                    ).first()
+
+                    if not mercury_account:
+                        logger.warning("No active Mercury account group found for account %s", account.id)
+                        continue
+
                     try:
+                        # Create API client for this Mercury account group
+                        mercury_api = MercuryBankAPIClient(
+                            api_token=mercury_account.api_key,
+                            sandbox=mercury_account.sandbox_mode
+                        )
+
                         # Try to get transactions using the library first
                         try:
-                            transactions_data_raw = self.mercury_api.get_transactions(
+                            transactions_data_raw = mercury_api.get_transactions(
                                 account_id=account.id,
                                 start_date=start_date.isoformat(),
                                 end_date=end_date.isoformat(),
@@ -284,7 +322,7 @@ class MercuryBankSyncer:
                             else:
                                 transactions_data = transactions_data_raw
 
-                        except Exception as lib_error:
+                        except (ValueError, SQLAlchemyError) as lib_error:
                             logger.warning(
                                 "Mercury library failed for account %s: %s. Skipping account.",
                                 account.id,

@@ -1,3 +1,4 @@
+# Try using a specific registry or different base image
 FROM python:3.11-slim
 
 # Set environment variables
