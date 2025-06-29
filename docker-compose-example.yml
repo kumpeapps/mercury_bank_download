@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  mercury-sync:
+    image: "justinkumpe/mercury_bank_download:latest"
+    environment:
+      # Mercury Bank API configuration
+      - MERCURY_API_KEY=
+      
+      # Database configuration
+      - DATABASE_URL=mysql+pymysql://user:pass@server:3306/Bot_mercury
+      
+      # Sync configuration
+      - SYNC_DAYS_BACK=30
+      - SYNC_INTERVAL_MINUTES=60
+      - RUN_ONCE=true
+    
+    volumes:
+      - .:/app
+    
+    restart: unless-stopped
+    
+    networks:
+      - mercury-network
+
+networks:
+  mercury-network:
+    driver: bridge
