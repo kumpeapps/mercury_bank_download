@@ -1,0 +1,17 @@
+# Core dependencies  
+sqlalchemy>=1.4.0
+pymysql
+cryptography
+
+# Additional dependencies
+python-dotenv
+requests
+schedule
+
+# Development dependencies (optional)
+pytest
+black
+flake8
+
+# Mercury Bank API
+mercury-bank-api>=1.0.3
