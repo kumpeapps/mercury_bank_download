@@ -11,7 +11,6 @@ RUN apt-get update && apt-get install -y \
     default-libmysqlclient-dev \
     pkg-config \
     libffi-dev \
-    libffi6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
@@ -32,7 +31,8 @@ COPY . .
 # Create a non-root user and set proper permissions
 RUN adduser --disabled-password --gecos '' appuser && \
     chown -R appuser:appuser /app && \
-    chmod -R 755 /app
+    chmod -R 755 /app && \
+    chmod +x /app/*.py
 USER appuser
 
 # Health check
