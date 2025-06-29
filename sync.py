@@ -60,7 +60,7 @@ class MercuryBankSyncer:
         self.api_key = os.getenv("MERCURY_API_KEY")
         if not self.api_key:
             raise ValueError("MERCURY_API_KEY environment variable is required")
-        sandbox_mode: bool = ( # type: ignore
+        sandbox_mode: bool = (  # type: ignore
             os.getenv("MERCURY_SANDBOX_MODE", "false").lower() == "true"
         )
         self.mercury_api = MercuryBankAPIClient(
@@ -76,16 +76,16 @@ class MercuryBankSyncer:
     def _safe_get(self, obj, key, default=None):
         """
         Safely get a value from either a dictionary or an object.
-        
+
         Args:
             obj: Dictionary or object to extract value from
             key: Key/attribute name to extract
             default: Default value if key/attribute not found
-            
+
         Returns:
             The value or default if not found
         """
-        if hasattr(obj, 'get') and callable(getattr(obj, 'get')):
+        if hasattr(obj, "get") and callable(getattr(obj, "get")):
             # It's a dictionary-like object
             return obj.get(key, default)
         elif hasattr(obj, key):
@@ -144,11 +144,14 @@ class MercuryBankSyncer:
                         existing_account.name = self._safe_get(
                             account_data, "name", existing_account.name
                         )
-                        existing_account.account_number = self._safe_get(
-                            account_data, "accountNumber"
-                        ) or existing_account.account_number
+                        existing_account.account_number = (
+                            self._safe_get(account_data, "accountNumber")
+                            or existing_account.account_number
+                        )
                         existing_account.routing_number = self._safe_get(
-                            account_data, "routingNumber", existing_account.routing_number
+                            account_data,
+                            "routingNumber",
+                            existing_account.routing_number,
                         )
                         existing_account.account_type = self._safe_get(
                             account_data, "type", existing_account.account_type
@@ -160,7 +163,9 @@ class MercuryBankSyncer:
                             account_data, "currentBalance", existing_account.balance
                         )
                         existing_account.available_balance = self._safe_get(
-                            account_data, "availableBalance", existing_account.available_balance
+                            account_data,
+                            "availableBalance",
+                            existing_account.available_balance,
                         )
                         existing_account.currency = self._safe_get(
                             account_data, "currency", existing_account.currency
@@ -172,7 +177,9 @@ class MercuryBankSyncer:
                             account_data, "nickname", existing_account.nickname
                         )
                         existing_account.legal_business_name = self._safe_get(
-                            account_data, "legalBusinessName", existing_account.legal_business_name
+                            account_data,
+                            "legalBusinessName",
+                            existing_account.legal_business_name,
                         )
 
                         logger.info("Updated account: %s", account_id)
@@ -181,16 +188,24 @@ class MercuryBankSyncer:
                         new_account = Account(
                             id=account_id,
                             name=self._safe_get(account_data, "name", ""),
-                            account_number=self._safe_get(account_data, "accountNumber"),
-                            routing_number=self._safe_get(account_data, "routingNumber"),
+                            account_number=self._safe_get(
+                                account_data, "accountNumber"
+                            ),
+                            routing_number=self._safe_get(
+                                account_data, "routingNumber"
+                            ),
                             account_type=self._safe_get(account_data, "type"),
                             status=self._safe_get(account_data, "status"),
                             balance=self._safe_get(account_data, "currentBalance"),
-                            available_balance=self._safe_get(account_data, "availableBalance"),
+                            available_balance=self._safe_get(
+                                account_data, "availableBalance"
+                            ),
                             currency=self._safe_get(account_data, "currency", "USD"),
                             kind=self._safe_get(account_data, "kind"),
                             nickname=self._safe_get(account_data, "nickname"),
-                            legal_business_name=self._safe_get(account_data, "legalBusinessName"),
+                            legal_business_name=self._safe_get(
+                                account_data, "legalBusinessName"
+                            ),
                         )
                         db.add(new_account)
                         logger.info("Created new account: %s", account_id)
@@ -262,17 +277,18 @@ class MercuryBankSyncer:
                                 start_date=start_date.isoformat(),
                                 end_date=end_date.isoformat(),
                             )
-                            
+
                             # Handle case where transactions_data_raw has transactions attribute
                             if hasattr(transactions_data_raw, "transactions"):
                                 transactions_data = transactions_data_raw.transactions
                             else:
                                 transactions_data = transactions_data_raw
-                                
+
                         except Exception as lib_error:
                             logger.warning(
                                 "Mercury library failed for account %s: %s. Skipping account.",
-                                account.id, str(lib_error)
+                                account.id,
+                                str(lib_error),
                             )
                             continue
 
@@ -323,23 +339,31 @@ class MercuryBankSyncer:
                                 except (ValueError, TypeError):
                                     logger.warning(
                                         "Invalid postedAt date format for transaction %s: %s",
-                                        transaction_id, posted_at_raw
+                                        transaction_id,
+                                        posted_at_raw,
                                     )
 
                             # Handle estimatedDeliveryDate field
-                            delivery_date_raw = self._safe_get(transaction_data, "estimatedDeliveryDate")
+                            delivery_date_raw = self._safe_get(
+                                transaction_data, "estimatedDeliveryDate"
+                            )
                             if delivery_date_raw:
                                 try:
                                     if isinstance(delivery_date_raw, datetime):
                                         estimated_delivery_date = delivery_date_raw
                                     else:
-                                        estimated_delivery_date = datetime.fromisoformat(
-                                            str(delivery_date_raw).replace("Z", "+00:00")
+                                        estimated_delivery_date = (
+                                            datetime.fromisoformat(
+                                                str(delivery_date_raw).replace(
+                                                    "Z", "+00:00"
+                                                )
+                                            )
                                         )
                                 except (ValueError, TypeError):
                                     logger.warning(
                                         "Invalid estimatedDeliveryDate format for transaction %s: %s",
-                                        transaction_id, delivery_date_raw
+                                        transaction_id,
+                                        delivery_date_raw,
                                     )
 
                             # Handle failedAt field
@@ -355,11 +379,14 @@ class MercuryBankSyncer:
                                 except (ValueError, TypeError):
                                     logger.warning(
                                         "Invalid failedAt date format for transaction %s: %s",
-                                        transaction_id, failed_at_raw
+                                        transaction_id,
+                                        failed_at_raw,
                                     )
 
                             # Handle createdAt field
-                            created_at_raw = self._safe_get(transaction_data, "createdAt")
+                            created_at_raw = self._safe_get(
+                                transaction_data, "createdAt"
+                            )
                             if created_at_raw:
                                 try:
                                     if isinstance(created_at_raw, datetime):
@@ -371,64 +398,108 @@ class MercuryBankSyncer:
                                 except (ValueError, TypeError):
                                     logger.warning(
                                         "Invalid createdAt date format for transaction %s: %s",
-                                        transaction_id, created_at_raw
+                                        transaction_id,
+                                        created_at_raw,
                                     )
 
                             if existing_transaction:
                                 # Update existing transaction with correct Mercury API field names
                                 existing_transaction.amount = self._safe_get(
-                                    transaction_data, "amount", existing_transaction.amount
+                                    transaction_data,
+                                    "amount",
+                                    existing_transaction.amount,
                                 )
                                 existing_transaction.currency = self._safe_get(
-                                    transaction_data, "currency", existing_transaction.currency
+                                    transaction_data,
+                                    "currency",
+                                    existing_transaction.currency,
                                 )
                                 existing_transaction.description = self._safe_get(
-                                    transaction_data, "description", existing_transaction.description
+                                    transaction_data,
+                                    "description",
+                                    existing_transaction.description,
                                 )
                                 existing_transaction.bank_description = self._safe_get(
-                                    transaction_data, "bankDescription", existing_transaction.bank_description
+                                    transaction_data,
+                                    "bankDescription",
+                                    existing_transaction.bank_description,
                                 )
                                 existing_transaction.external_memo = self._safe_get(
-                                    transaction_data, "externalMemo", existing_transaction.external_memo
+                                    transaction_data,
+                                    "externalMemo",
+                                    existing_transaction.external_memo,
                                 )
                                 existing_transaction.note = self._safe_get(
                                     transaction_data, "note", existing_transaction.note
                                 )
                                 existing_transaction.transaction_type = self._safe_get(
-                                    transaction_data, "type", existing_transaction.transaction_type
+                                    transaction_data,
+                                    "type",
+                                    existing_transaction.transaction_type,
                                 )
                                 existing_transaction.kind = self._safe_get(
                                     transaction_data, "kind", existing_transaction.kind
                                 )
                                 existing_transaction.status = self._safe_get(
-                                    transaction_data, "status", existing_transaction.status
+                                    transaction_data,
+                                    "status",
+                                    existing_transaction.status,
                                 )
                                 existing_transaction.category = self._safe_get(
-                                    transaction_data, "category", existing_transaction.category
+                                    transaction_data,
+                                    "category",
+                                    existing_transaction.category,
                                 )
                                 existing_transaction.mercury_category = self._safe_get(
-                                    transaction_data, "mercuryCategory", existing_transaction.mercury_category
+                                    transaction_data,
+                                    "mercuryCategory",
+                                    existing_transaction.mercury_category,
                                 )
                                 existing_transaction.counterparty_name = self._safe_get(
-                                    transaction_data, "counterpartyName", existing_transaction.counterparty_name
+                                    transaction_data,
+                                    "counterpartyName",
+                                    existing_transaction.counterparty_name,
                                 )
-                                existing_transaction.counterparty_nickname = self._safe_get(
-                                    transaction_data, "counterpartyNickname", existing_transaction.counterparty_nickname
+                                existing_transaction.counterparty_nickname = (
+                                    self._safe_get(
+                                        transaction_data,
+                                        "counterpartyNickname",
+                                        existing_transaction.counterparty_nickname,
+                                    )
                                 )
-                                existing_transaction.counterparty_account = self._safe_get(
-                                    transaction_data, "counterpartyAccount", existing_transaction.counterparty_account
+                                existing_transaction.counterparty_account = (
+                                    self._safe_get(
+                                        transaction_data,
+                                        "counterpartyAccount",
+                                        existing_transaction.counterparty_account,
+                                    )
                                 )
                                 existing_transaction.reference_number = self._safe_get(
-                                    transaction_data, "referenceNumber", existing_transaction.reference_number
+                                    transaction_data,
+                                    "referenceNumber",
+                                    existing_transaction.reference_number,
                                 )
-                                existing_transaction.reason_for_failure = self._safe_get(
-                                    transaction_data, "reasonForFailure", existing_transaction.reason_for_failure
+                                existing_transaction.reason_for_failure = (
+                                    self._safe_get(
+                                        transaction_data,
+                                        "reasonForFailure",
+                                        existing_transaction.reason_for_failure,
+                                    )
                                 )
                                 existing_transaction.has_generated_receipt = bool(  # type: ignore[assignment]
-                                    self._safe_get(transaction_data, "hasGeneratedReceipt", existing_transaction.has_generated_receipt)
+                                    self._safe_get(
+                                        transaction_data,
+                                        "hasGeneratedReceipt",
+                                        existing_transaction.has_generated_receipt,
+                                    )
                                 )
                                 existing_transaction.number_of_attachments = int(  # type: ignore[assignment]
-                                    self._safe_get(transaction_data, "numberOfAttachments", existing_transaction.number_of_attachments) or 0
+                                    self._safe_get(
+                                        transaction_data,
+                                        "numberOfAttachments",
+                                        existing_transaction.number_of_attachments,
+                                    )
+                                    or 0
                                 )
 
                                 # Update dates if provided
@@ -447,24 +518,61 @@ class MercuryBankSyncer:
                                 new_transaction = Transaction(
                                     id=transaction_id,
                                     account_id=account.id,
-                                    amount=float(self._safe_get(transaction_data, "amount") or 0),
-                                    currency=self._safe_get(transaction_data, "currency") or "USD",
-                                    description=self._safe_get(transaction_data, "description") or "",
-                                    bank_description=self._safe_get(transaction_data, "bankDescription"),
-                                    external_memo=self._safe_get(transaction_data, "externalMemo"),
+                                    amount=float(
+                                        self._safe_get(transaction_data, "amount") or 0
+                                    ),
+                                    currency=self._safe_get(
+                                        transaction_data, "currency"
+                                    )
+                                    or "USD",
+                                    description=self._safe_get(
+                                        transaction_data, "description"
+                                    )
+                                    or "",
+                                    bank_description=self._safe_get(
+                                        transaction_data, "bankDescription"
+                                    ),
+                                    external_memo=self._safe_get(
+                                        transaction_data, "externalMemo"
+                                    ),
                                     note=self._safe_get(transaction_data, "note"),
-                                    transaction_type=self._safe_get(transaction_data, "type"),
+                                    transaction_type=self._safe_get(
+                                        transaction_data, "type"
+                                    ),
                                     kind=self._safe_get(transaction_data, "kind"),
                                     status=self._safe_get(transaction_data, "status"),
-                                    category=self._safe_get(transaction_data, "category"),
-                                    mercury_category=self._safe_get(transaction_data, "mercuryCategory"),
-                                    counterparty_name=self._safe_get(transaction_data, "counterpartyName"),
-                                    counterparty_nickname=self._safe_get(transaction_data, "counterpartyNickname"),
-                                    counterparty_account=self._safe_get(transaction_data, "counterpartyAccount"),
-                                    reference_number=self._safe_get(transaction_data, "referenceNumber"),
-                                    reason_for_failure=self._safe_get(transaction_data, "reasonForFailure"),
-                                    has_generated_receipt=bool(self._safe_get(transaction_data, "hasGeneratedReceipt")),
-                                    number_of_attachments=int(self._safe_get(transaction_data, "numberOfAttachments") or 0),
+                                    category=self._safe_get(
+                                        transaction_data, "category"
+                                    ),
+                                    mercury_category=self._safe_get(
+                                        transaction_data, "mercuryCategory"
+                                    ),
+                                    counterparty_name=self._safe_get(
+                                        transaction_data, "counterpartyName"
+                                    ),
+                                    counterparty_nickname=self._safe_get(
+                                        transaction_data, "counterpartyNickname"
+                                    ),
+                                    counterparty_account=self._safe_get(
+                                        transaction_data, "counterpartyAccount"
+                                    ),
+                                    reference_number=self._safe_get(
+                                        transaction_data, "referenceNumber"
+                                    ),
+                                    reason_for_failure=self._safe_get(
+                                        transaction_data, "reasonForFailure"
+                                    ),
+                                    has_generated_receipt=bool(
+                                        self._safe_get(
+                                            transaction_data, "hasGeneratedReceipt"
+                                        )
+                                    ),
+                                    number_of_attachments=int(
+                                        self._safe_get(
+                                            transaction_data, "numberOfAttachments"
+                                        )
+                                        or 0
+                                    ),
                                     posted_at=posted_at,
                                     estimated_delivery_date=estimated_delivery_date,
                                     failed_at=failed_at,
