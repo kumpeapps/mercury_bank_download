@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome - Mercury Bank Dashboard{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center min-vh-100 align-items-center">
+        <div class="col-lg-8 col-md-10">
+            <div class="text-center mb-5">
+                <i class="fas fa-university fa-4x text-primary mb-3"></i>
+                <h1 class="display-4 fw-bold">Mercury Bank Dashboard</h1>
+                <p class="lead text-muted">Manage your Mercury Bank accounts and track your finances with beautiful reports</p>
+            </div>
+            
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-body text-center p-5">
+                            <i class="fas fa-chart-line fa-3x text-primary mb-3"></i>
+                            <h3>Financial Reports</h3>
+                            <p class="text-muted">Visualize your spending patterns with interactive charts and month-over-month budget analysis</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-body text-center p-5">
+                            <i class="fas fa-shield-alt fa-3x text-success mb-3"></i>
+                            <h3>Secure Access</h3>
+                            <p class="text-muted">Multi-user support with secure authentication and role-based access to your Mercury accounts</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="text-center mt-5">
+                <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg me-3">
+                    <i class="fas fa-sign-in-alt me-2"></i>
+                    Sign In
+                </a>
+                <a href="{{ url_for('register') }}" class="btn btn-outline-primary btn-lg">
+                    <i class="fas fa-user-plus me-2"></i>
+                    Create Account
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Mercury Bank{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</h1>
+</div>
+
+<!-- Primary Account Filter Status -->
+{% if has_primary_account and not show_all %}
+<div class="alert alert-info d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <i class="fas fa-filter me-2"></i>
+        <strong>Filtered View:</strong> Currently showing data from your primary Mercury account
+        {% if has_primary_specific_account %} and primary account{% endif %} only.
+    </div>
+    <div>
+        <a href="{{ url_for('dashboard', show_all='1') }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-eye me-1"></i>Show All Accounts
+        </a>
+        <a href="{{ url_for('user_settings') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-cog me-1"></i>Change Settings
+        </a>
+    </div>
+</div>
+{% elif has_primary_account and show_all %}
+<div class="alert alert-success d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <i class="fas fa-eye me-2"></i>
+        <strong>All Accounts View:</strong> Currently showing data from all accessible Mercury accounts.
+    </div>
+    <div>
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-filter me-1"></i>Show Primary Account Only
+        </a>
+    </div>
+</div>
+{% endif %}
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <i class="fas fa-wallet fa-2x mb-2"></i>
+                <h3>${{ "%.2f"|format(total_balance) }}</h3>
+                <p class="mb-0">Total Balance</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card bg-success text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-university fa-2x mb-2"></i>
+                <h3>{{ total_accounts }}</h3>
+                <p class="mb-0">Accounts</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card bg-info text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-link fa-2x mb-2"></i>
+                <h3>{{ mercury_accounts|length }}</h3>
+                <p class="mb-0">Mercury Connections</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card bg-warning text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-exchange-alt fa-2x mb-2"></i>
+                <h3>{{ recent_transactions|length }}</h3>
+                <p class="mb-0">Recent Transactions</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Recent Transactions -->
+    <div class="col-lg-8 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-history me-2"></i>Recent Transactions</h5>
+                <a href="{{ url_for('transactions') }}" class="btn btn-sm btn-primary">View All</a>
+            </div>
+            <div class="card-body p-0">
+                {% if recent_transactions %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Category</th>
+                                <th class="text-end">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for transaction in recent_transactions %}
+                            <tr>
+                                <td>
+                                    {% if transaction.posted_at %}
+                                        {{ transaction.posted_at.strftime('%m/%d/%Y') }}
+                                    {% else %}
+                                        {{ transaction.created_at.strftime('%m/%d/%Y') }}
+                                        <small class="text-warning d-block">Pending</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="text-truncate" style="max-width: 200px;">
+                                        {{ transaction.description or transaction.bank_description or 'No description' }}
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ transaction.note or 'Uncategorized' }}</span>
+                                </td>
+                                <td class="text-end">
+                                    <span class="{% if transaction.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                        ${{ "%.2f"|format(transaction.amount|abs) }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">No transactions found</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Mercury Accounts -->
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-link me-2"></i>Mercury Accounts</h5>
+                <a href="{{ url_for('add_mercury_account') }}" class="btn btn-sm btn-success">
+                    <i class="fas fa-plus"></i>
+                </a>
+            </div>
+            <div class="card-body">
+                {% if mercury_accounts %}
+                    {% for mercury_account in mercury_accounts %}
+                    <div class="d-flex justify-content-between align-items-center mb-3 p-3 bg-light rounded">
+                        <div>
+                            <h6 class="mb-1">{{ mercury_account.name }}</h6>
+                            <small class="text-muted">{{ mercury_account.environment|title }}</small>
+                        </div>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-plus-circle fa-3x text-muted mb-3"></i>
+                    <p class="text-muted mb-3">No Mercury accounts connected</p>
+                    <a href="{{ url_for('add_mercury_account') }}" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>Add Account
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

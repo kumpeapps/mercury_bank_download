@@ -1,0 +1,609 @@
+{% extends "base.html" %}
+
+{% block title %}Reports - Mercury Bank{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-chart-bar me-2"></i>Financial Reports</h1>
+</div>
+
+<!-- Report Controls -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-2">
+                <label for="mercury_account_id" class="form-label">Mercury Account</label>
+                <select class="form-select" id="mercury_account_id" name="mercury_account_id">
+                    <option value="">All Mercury Accounts</option>
+                    {% for mercury_account in mercury_accounts %}
+                    <option value="{{ mercury_account.id }}" {% if current_mercury_account_id == mercury_account.id %}selected{% endif %}>
+                        {{ mercury_account.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="account_id" class="form-label">Bank Account</label>
+                <select class="form-select" id="account_id" name="account_id">
+                    <option value="">All Accounts</option>
+                    {% for account in accounts %}
+                    <option value="{{ account.id }}" {% if current_account_id == account.id %}selected{% endif %}>
+                        {{ account.nickname or account.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="month" class="form-label">Month</label>
+                <select class="form-select" id="month" name="month">
+                    <option value="">All Months</option>
+                    {% for month in available_months %}
+                    <option value="{{ month.value }}" {% if current_month == month.value %}selected{% endif %}>
+                        {{ month.label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="category" class="form-label">Category</label>
+                <select class="form-select" id="category" name="category">
+                    <option value="">All Categories</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>
+                        {{ cat }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Status</label>
+                <div class="form-check-group" style="max-height: 80px; overflow-y: auto;">
+                    {% for status in available_statuses %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="status" value="{{ status }}" 
+                               id="status_{{ status }}" 
+                               {% if status in current_status %}checked{% endif %}>
+                        <label class="form-check-label" for="status_{{ status }}">
+                            {{ 'Posted' if status == 'sent' else status.title() }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">&nbsp;</label>
+                <div class="d-flex flex-column gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-filter me-1"></i>Filter
+                    </button>
+                    <a href="{{ url_for('reports') }}" class="btn btn-outline-secondary btn-sm">Clear</a>
+                </div>
+            </div>
+        </form>
+        
+        <!-- View Type and Export Controls -->
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <h6>View Type</h6>
+                <div class="btn-group" role="group">
+                    <input type="radio" class="btn-check" name="viewType" id="viewCharts" value="charts" {% if view_type != 'table' %}checked{% endif %}>
+                    <label class="btn btn-outline-info" for="viewCharts">Charts</label>
+                    
+                    <input type="radio" class="btn-check" name="viewType" id="viewTable" value="table" {% if view_type == 'table' %}checked{% endif %}>
+                    <label class="btn btn-outline-info" for="viewTable">Table</label>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h6>Export</h6>
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('reports', 
+                               mercury_account_id=current_mercury_account_id,
+                               account_id=current_account_id,
+                               category=current_category,
+                               month=current_month,
+                               status=current_status,
+                               export='csv') }}" 
+                       class="btn btn-outline-success btn-sm">
+                        <i class="fas fa-file-csv me-1"></i>Export CSV
+                    </a>
+                    <a href="{{ url_for('reports', 
+                               mercury_account_id=current_mercury_account_id,
+                               account_id=current_account_id,
+                               category=current_category,
+                               month=current_month,
+                               status=current_status,
+                               export='excel') }}" 
+                       class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-file-excel me-1"></i>Export Excel
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4" id="chartsControls" {% if view_type == 'table' %}style="display: none;"{% endif %}>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6>Budget Analysis Period</h6>
+                <div class="btn-group" role="group">
+                    <input type="radio" class="btn-check" name="budgetPeriod" id="budget6" value="6">
+                    <label class="btn btn-outline-primary" for="budget6">6 Months</label>
+                    
+                    <input type="radio" class="btn-check" name="budgetPeriod" id="budget12" value="12" checked>
+                    <label class="btn btn-outline-primary" for="budget12">12 Months</label>
+                    
+                    <input type="radio" class="btn-check" name="budgetPeriod" id="budget24" value="24">
+                    <label class="btn btn-outline-primary" for="budget24">24 Months</label>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6>Expense Breakdown Period</h6>
+                <div class="btn-group" role="group">
+                    <input type="radio" class="btn-check" name="expensePeriod" id="expense1" value="1">
+                    <label class="btn btn-outline-success" for="expense1">1 Month</label>
+                    
+                    <input type="radio" class="btn-check" name="expensePeriod" id="expense3" value="3" checked>
+                    <label class="btn btn-outline-success" for="expense3">3 Months</label>
+                    
+                    <input type="radio" class="btn-check" name="expensePeriod" id="expense6" value="6">
+                    <label class="btn btn-outline-success" for="expense6">6 Months</label>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6>Transaction Status</h6>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="includePending" checked>
+                    <label class="form-check-label" for="includePending">
+                        Include Pending Transactions
+                    </label>
+                    <div class="form-text">Include pending/processing transactions in reports</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Table View -->
+<div id="tableView" {% if view_type != 'table' %}style="display: none;"{% endif %}>
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="fas fa-table me-2"></i>
+                Category Summary Report
+            </h5>
+        </div>
+        <div class="card-body">
+            {% if table_data %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Category</th>
+                            <th class="text-end">Total Amount</th>
+                            <th class="text-center">Transaction Count</th>
+                            <th class="text-end">Average Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in table_data %}
+                        <tr>
+                            <td>
+                                <span class="fw-medium">{{ row.category }}</span>
+                            </td>
+                            <td class="text-end {% if row.total_amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                <strong>${{ "{:,.2f}".format(row.total_amount) }}</strong>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-primary">{{ row.transaction_count }}</span>
+                            </td>
+                            <td class="text-end {% if row.average_amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                ${{ "{:,.2f}".format(row.average_amount) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-secondary">
+                        <tr>
+                            <th>Total</th>
+                            <th class="text-end">
+                                {% set total_amount = table_data | sum(attribute='total_amount') %}
+                                <strong class="{% if total_amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                    ${{ "{:,.2f}".format(total_amount) }}
+                                </strong>
+                            </th>
+                            <th class="text-center">
+                                {% set total_transactions = table_data | sum(attribute='transaction_count') %}
+                                <strong>{{ total_transactions }}</strong>
+                            </th>
+                            <th class="text-end">
+                                {% if total_transactions > 0 %}
+                                    <strong class="{% if (total_amount / total_transactions) < 0 %}text-danger{% else %}text-success{% endif %}">
+                                        ${{ "{:,.2f}".format(total_amount / total_transactions) }}
+                                    </strong>
+                                {% else %}
+                                    <strong>$0.00</strong>
+                                {% endif %}
+                            </th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <p class="text-muted">No category data available for the selected filters.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Charts -->
+<div id="chartsView" {% if view_type == 'table' %}style="display: none;"{% endif %}>
+<div class="row">
+    <!-- Budget Trend Chart -->
+    <div class="col-lg-8 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-line me-2"></i>
+                    Budget Trends by Category (Month over Month)
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="budgetChartContainer" style="position: relative; height: 400px;">
+                    <canvas id="budgetChart"></canvas>
+                </div>
+                <div id="budgetLoading" class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Loading budget data...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Expense Breakdown Pie Chart -->
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    Expense Breakdown
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="expenseChartContainer" style="position: relative; height: 400px;">
+                    <canvas id="expenseChart"></canvas>
+                </div>
+                <div id="expenseLoading" class="text-center py-5">
+                    <div class="spinner-border text-success" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Loading expense data...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Report Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Budget Analysis</h6>
+                        <p class="text-muted">
+                            This chart shows your spending patterns by category over time. 
+                            Categories are determined by the "note" field of your transactions and are case-insensitive. 
+                            Use this to identify spending trends and budget accordingly.
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Expense Breakdown</h6>
+                        <p class="text-muted">
+                            This pie chart shows the distribution of your expenses across different categories 
+                            for the selected time period. It helps you understand where most of your money is going.
+                        </p>
+                    </div>
+                </div>
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    <strong>Tips:</strong> 
+                    <ul class="mb-0 mt-2">
+                        <li>Add meaningful notes to your transactions for better categorization</li>
+                        <li>Categories are case-insensitive (e.g., "Food", "food", and "FOOD" are grouped together)</li>
+                        <li>Use the "Include Pending Transactions" option to see your most current spending patterns</li>
+                        <li>Pending transactions are included by default for real-time insights</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div> <!-- End chartsView -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+let budgetChart = null;
+let expenseChart = null;
+
+// Load budget chart
+function loadBudgetChart(months = 12) {
+    document.getElementById('budgetLoading').style.display = 'block';
+    document.getElementById('budgetChart').style.display = 'none';
+    
+    const includePending = document.getElementById('includePending').checked;
+    const mercuryAccountId = document.getElementById('mercury_account_id').value;
+    const monthFilter = document.getElementById('month').value;
+    
+    let url = `/api/budget_data?months=${months}&include_pending=${includePending}`;
+    if (mercuryAccountId) {
+        url += `&mercury_account_id=${mercuryAccountId}`;
+    }
+    if (monthFilter) {
+        url += `&month=${monthFilter}`;
+    }
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('budgetLoading').style.display = 'none';
+            document.getElementById('budgetChart').style.display = 'block';
+            
+            const ctx = document.getElementById('budgetChart').getContext('2d');
+            
+            if (budgetChart) {
+                budgetChart.destroy();
+            }
+            
+            budgetChart = new Chart(ctx, {
+                type: 'line',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Monthly Spending by Category'
+                        },
+                        legend: {
+                            position: 'bottom'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Month'
+                            }
+                        }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    }
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error loading budget chart:', error);
+            document.getElementById('budgetLoading').innerHTML = 
+                '<div class="text-center text-danger"><i class="fas fa-exclamation-triangle"></i><p>Error loading chart data</p></div>';
+        });
+}
+
+// Load expense chart
+function loadExpenseChart(months = 3) {
+    document.getElementById('expenseLoading').style.display = 'block';
+    document.getElementById('expenseChart').style.display = 'none';
+    
+    const includePending = document.getElementById('includePending').checked;
+    const mercuryAccountId = document.getElementById('mercury_account_id').value;
+    const monthFilter = document.getElementById('month').value;
+    
+    let url = `/api/expense_breakdown?months=${months}&include_pending=${includePending}`;
+    if (mercuryAccountId) {
+        url += `&mercury_account_id=${mercuryAccountId}`;
+    }
+    if (monthFilter) {
+        url += `&month=${monthFilter}`;
+    }
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('expenseLoading').style.display = 'none';
+            document.getElementById('expenseChart').style.display = 'block';
+            
+            const ctx = document.getElementById('expenseChart').getContext('2d');
+            
+            if (expenseChart) {
+                expenseChart.destroy();
+            }
+            
+            expenseChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Expense Distribution'
+                        },
+                        legend: {
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${label}: $${value.toLocaleString()} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error loading expense chart:', error);
+            document.getElementById('expenseLoading').innerHTML = 
+                '<div class="text-center text-danger"><i class="fas fa-exclamation-triangle"></i><p>Error loading chart data</p></div>';
+        });
+}
+
+// Event listeners for period changes
+document.querySelectorAll('input[name="budgetPeriod"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.checked) {
+            loadBudgetChart(parseInt(this.value));
+        }
+    });
+});
+
+document.querySelectorAll('input[name="expensePeriod"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.checked) {
+            loadExpenseChart(parseInt(this.value));
+        }
+    });
+});
+
+// Event listener for pending transactions checkbox
+document.getElementById('includePending').addEventListener('change', function() {
+    const budgetPeriod = document.querySelector('input[name="budgetPeriod"]:checked').value;
+    const expensePeriod = document.querySelector('input[name="expensePeriod"]:checked').value;
+    loadBudgetChart(parseInt(budgetPeriod));
+    loadExpenseChart(parseInt(expensePeriod));
+});
+
+// Event listener for Mercury account selection
+document.getElementById('mercury_account_id').addEventListener('change', function() {
+    const budgetPeriod = document.querySelector('input[name="budgetPeriod"]:checked').value;
+    const expensePeriod = document.querySelector('input[name="expensePeriod"]:checked').value;
+    loadBudgetChart(parseInt(budgetPeriod));
+    loadExpenseChart(parseInt(expensePeriod));
+});
+
+// Event listener for month filter
+document.getElementById('month').addEventListener('change', function() {
+    const budgetPeriod = document.querySelector('input[name="budgetPeriod"]:checked').value;
+    const expensePeriod = document.querySelector('input[name="expensePeriod"]:checked').value;
+    loadBudgetChart(parseInt(budgetPeriod));
+    loadExpenseChart(parseInt(expensePeriod));
+});
+
+// Event listeners for view type
+document.querySelectorAll('input[name="viewType"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.value === 'table') {
+            document.getElementById('chartsView').style.display = 'none';
+            document.getElementById('chartsControls').style.display = 'none';
+            document.getElementById('tableView').style.display = 'block';
+            // Reload page with table view
+            const params = new URLSearchParams(window.location.search);
+            params.set('view', 'table');
+            const mercuryAccountId = document.getElementById('mercury_account_id').value;
+            const accountId = document.getElementById('account_id').value;
+            const monthFilter = document.getElementById('month').value;
+            const category = document.getElementById('category').value;
+            if (mercuryAccountId) params.set('mercury_account_id', mercuryAccountId);
+            if (accountId) params.set('account_id', accountId);
+            if (monthFilter) params.set('month', monthFilter);
+            if (category) params.set('category', category);
+            // Add status filters
+            const statusCheckboxes = document.querySelectorAll('input[name="status"]:checked');
+            statusCheckboxes.forEach(checkbox => {
+                params.append('status', checkbox.value);
+            });
+            window.location.href = `${window.location.pathname}?${params.toString()}`;
+        } else {
+            document.getElementById('chartsView').style.display = 'block';
+            document.getElementById('chartsControls').style.display = 'flex';
+            document.getElementById('tableView').style.display = 'none';
+            // Reload page with charts view
+            const params = new URLSearchParams(window.location.search);
+            params.set('view', 'charts');
+            const mercuryAccountId = document.getElementById('mercury_account_id').value;
+            const accountId = document.getElementById('account_id').value;
+            const monthFilter = document.getElementById('month').value;
+            const category = document.getElementById('category').value;
+            if (mercuryAccountId) params.set('mercury_account_id', mercuryAccountId);
+            if (accountId) params.set('account_id', accountId);
+            if (monthFilter) params.set('month', monthFilter);
+            if (category) params.set('category', category);
+            // Add status filters
+            const statusCheckboxes = document.querySelectorAll('input[name="status"]:checked');
+            statusCheckboxes.forEach(checkbox => {
+                params.append('status', checkbox.value);
+            });
+            window.location.href = `${window.location.pathname}?${params.toString()}`;
+        }
+    });
+});
+
+// Export function
+function exportData(format) {
+    const params = new URLSearchParams();
+    const mercuryAccountId = document.getElementById('mercury_account_id').value;
+    const accountId = document.getElementById('account_id').value;
+    const monthFilter = document.getElementById('month').value;
+    const category = document.getElementById('category').value;
+    
+    if (mercuryAccountId) params.set('mercury_account_id', mercuryAccountId);
+    if (accountId) params.set('account_id', accountId);
+    if (monthFilter) params.set('month', monthFilter);
+    if (category) params.set('category', category);
+    // Add status filters
+    const statusCheckboxes = document.querySelectorAll('input[name="status"]:checked');
+    statusCheckboxes.forEach(checkbox => {
+        params.append('status', checkbox.value);
+    });
+    params.set('export', format);
+    
+    window.location.href = `${window.location.pathname}?${params.toString()}`;
+}
+
+// Load initial charts
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('chartsView').style.display !== 'none') {
+        loadBudgetChart(12);
+        loadExpenseChart(3);
+    }
+});
+</script>
+{% endblock %}

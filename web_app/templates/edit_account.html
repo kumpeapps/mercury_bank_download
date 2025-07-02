@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Account - Mercury Bank{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-edit me-2"></i>Edit Account</h1>
+    <a href="{{ url_for('accounts') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Accounts
+    </a>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-university me-2"></i>Account Details</h5>
+            </div>
+            <div class="card-body">
+                <!-- Account Info -->
+                <div class="mb-4">
+                    <h6 class="text-muted">Account Information</h6>
+                    <p class="mb-1"><strong>Name:</strong> {{ account.name }}</p>
+                    <p class="mb-1"><strong>Type:</strong> {{ account.account_type or 'Unknown' }}</p>
+                    <p class="mb-1"><strong>Balance:</strong> ${{ "%.2f"|format(account.balance or 0) }}</p>
+                    <p class="mb-1"><strong>Mercury Account:</strong> {{ mercury_account.name }}</p>
+                </div>
+
+                <hr>
+
+                <!-- Edit Form -->
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="nickname" class="form-label">Account Nickname</label>
+                        <input type="text" class="form-control" id="nickname" name="nickname" 
+                               value="{{ account.nickname or '' }}" 
+                               placeholder="Enter a custom name for this account">
+                        <div class="form-text">
+                            A custom nickname to help you identify this account. 
+                            Leave empty to use the default account name.
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-save me-2"></i>Update Account
+                            </button>
+                        </div>
+                        <div class="col-md-6">
+                            <a href="{{ url_for('accounts') }}" class="btn btn-outline-secondary w-100">Cancel</a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

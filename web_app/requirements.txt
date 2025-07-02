@@ -1,0 +1,31 @@
+# Web application dependencies
+flask>=2.3.0
+flask-login>=0.6.0
+werkzeug>=2.3.0
+
+# Core dependencies (from main project)
+sqlalchemy>=1.4.0
+pymysql
+cryptography
+
+# Security and authentication
+bcrypt>=4.0.0
+passlib>=1.7.0
+
+# Additional dependencies
+python-dotenv
+requests
+schedule
+
+# Export functionality
+pandas>=1.5.0
+openpyxl>=3.0.0
+
+# Development dependencies (optional)
+pytest
+black
+flake8
+
+# HTTP requests for Mercury API
+requests>=2.28.0
+urllib3>=1.26.0

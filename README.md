@@ -2,11 +2,11 @@ I used AI to write this readme file, it does have errors and I will re-write it 
 
 # Mercury Bank Data Synchronization
 
-A robust, production-ready Docker service for synchronizing Mercury Bank accounts and transactions to a MySQL database. Features multi-account management, user access control, and comprehensive monitoring capabilities.
+A robust, production-ready Docker service for synchronizing Mercury Bank accounts and transactions to a database. Features multi-account management, user access control, automatic migrations, and comprehensive monitoring capabilities. Supports MySQL, PostgreSQL, and other SQLAlchemy-compatible databases.
 
 [![Docker](https://img.shields.io/badge/Docker-Supported-blue?logo=docker)](https://hub.docker.com/r/justinkumpe/mercury_bank_download)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-green?logo=python)](https://python.org)
-[![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-orange?logo=mysql)](https://mysql.com)
+[![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-Database--Agnostic-orange?logo=sqlalchemy)](https://sqlalchemy.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
 ## ✨ Features
@@ -17,7 +17,8 @@ A robust, production-ready Docker service for synchronizing Mercury Bank account
 - 🔐 **User Access Control** - Role-based permissions and authentication
 - 🧪 **Sandbox Support** - Built-in testing environment support
 - 🐳 **Docker Ready** - Fully containerized deployment
-- 📊 **MySQL Database** - Persistent storage with optimized schema
+- �️ **Database Agnostic** - Supports MySQL, PostgreSQL, SQLite, and more via SQLAlchemy
+- 🔄 **Automatic Migrations** - Database schema updates handled automatically
 - ⚙️ **Configurable Sync** - Flexible scheduling and data range options
 - 📝 **Comprehensive Logging** - Detailed monitoring and debugging
 - 🏥 **Health Monitoring** - Built-in health checks and status reporting
@@ -29,7 +30,7 @@ A robust, production-ready Docker service for synchronizing Mercury Bank account
 
 - **Docker & Docker Compose** (recommended)
 - **Mercury Bank API Key** ([Get yours here](https://mercury.com/developers))
-- **MySQL Database** (or use included Docker setup)
+- **Database Server** - MySQL, PostgreSQL, SQLite, or other SQLAlchemy-supported database (or use included Docker setup)
 
 ### Option 1: Simple Single-Account Setup
 

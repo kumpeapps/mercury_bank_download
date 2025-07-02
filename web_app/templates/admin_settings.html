@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Settings{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8 mx-auto">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-cog"></i>
+                        System Settings
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% for setting in settings %}
+                        <div class="mb-3">
+                            <label for="setting_{{ setting.key }}" class="form-label">
+                                {{ setting.key|replace('_', ' ')|title }}
+                            </label>
+                            {% if setting.description %}
+                            <small class="form-text text-muted d-block">{{ setting.description }}</small>
+                            {% endif %}
+                            
+                            {% if setting.key == 'signup_enabled' %}
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" 
+                                       id="setting_{{ setting.key }}" 
+                                       name="setting_{{ setting.key }}" 
+                                       value="true"
+                                       {% if setting.value.lower() in ['true', '1', 'yes', 'on'] %}checked{% endif %}>
+                                <label class="form-check-label" for="setting_{{ setting.key }}">
+                                    Enable user registration
+                                </label>
+                            </div>
+                            <!-- Hidden field to ensure we get a value even when unchecked -->
+                            <input type="hidden" name="setting_{{ setting.key }}" value="false">
+                            {% else %}
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="setting_{{ setting.key }}" 
+                                   name="setting_{{ setting.key }}" 
+                                   value="{{ setting.value or '' }}">
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        
+                        {% if not settings %}
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            No editable settings available.
+                        </div>
+                        {% endif %}
+                        
+                        {% if settings %}
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Save Settings
+                            </button>
+                        </div>
+                        {% endif %}
+                    </form>
+                </div>
+                <div class="card-footer">
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Handle checkbox for boolean settings
+document.addEventListener('DOMContentLoaded', function() {
+    const checkboxes = document.querySelectorAll('input[type="checkbox"][name^="setting_"]');
+    checkboxes.forEach(function(checkbox) {
+        checkbox.addEventListener('change', function() {
+            // Find the corresponding hidden field and update its value
+            const hiddenField = document.querySelector('input[type="hidden"][name="' + this.name + '"]');
+            if (hiddenField) {
+                hiddenField.value = this.checked ? 'true' : 'false';
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

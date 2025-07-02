@@ -3,8 +3,8 @@
 from sqlalchemy import Column, String, DateTime, Boolean, text, Integer
 from sqlalchemy.orm import relationship
 from werkzeug.security import generate_password_hash, check_password_hash
-from passlib.hash import phpass # typed: ignore
-from .base import Base, user_mercury_account_association
+from passlib.hash import phpass
+from .base import Base, user_mercury_account_association, user_account_access
 
 
 class User(Base):
@@ -62,11 +62,28 @@ class User(Base):
     mercury_accounts = relationship(
         "MercuryAccount",
         secondary=user_mercury_account_association,
-        back_populates="users"
+        back_populates="users",
+    )
+
+    # Many-to-many relationship with Account for granular access control
+    # When this relationship has entries, it restricts user access to only those specific accounts
+    # If empty, user has access to all accounts in their mercury_accounts (default behavior)
+    # Explicit join conditions since user_id doesn't have a foreign key constraint
+    restricted_accounts = relationship(
+        "Account",
+        secondary=user_account_access,
+        primaryjoin="User.id == user_account_access.c.user_id",
+        secondaryjoin="Account.id == user_account_access.c.account_id",
+        back_populates="authorized_users",
     )
 
     # One-to-one relationship with UserSettings
-    settings = relationship("UserSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    settings = relationship(
+        "UserSettings",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         """
@@ -229,3 +246,43 @@ class User(Base):
 
         # For other formats, assume they might be valid (legacy hashes)
         return len(hash_value) > 10  # Basic length check
+
+    def get_accessible_accounts(self, db_session):
+        """
+        Get all accounts this user has access to.
+        
+        If the user has specific account restrictions (entries in restricted_accounts),
+        return only those accounts. Otherwise, return all accounts from their mercury_accounts.
+        
+        Args:
+            db_session: SQLAlchemy session to use for queries
+            
+        Returns:
+            list: List of Account objects the user can access
+        """
+        # If user has specific account restrictions, return only those
+        if self.restricted_accounts:
+            return self.restricted_accounts
+        
+        # Otherwise, return all accounts from all mercury accounts the user has access to
+        from .account import Account
+        accessible_accounts = []
+        for mercury_account in self.mercury_accounts:
+            accounts = db_session.query(Account).filter_by(mercury_account_id=mercury_account.id).all()
+            accessible_accounts.extend(accounts)
+        
+        return accessible_accounts
+    
+    def has_account_access(self, account_id, db_session):
+        """
+        Check if the user has access to a specific account.
+        
+        Args:
+            account_id: The ID of the account to check
+            db_session: SQLAlchemy session to use for queries
+            
+        Returns:
+            bool: True if user has access, False otherwise
+        """
+        accessible_accounts = self.get_accessible_accounts(db_session)
+        return any(account.id == account_id for account in accessible_accounts)

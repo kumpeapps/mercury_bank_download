@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block title %}Transactions - Mercury Bank{% endblock %}
+
+{% block content %}
+<style>
+.form-check-group {
+    max-height: 100px;
+    overflow-y: auto;
+}
+.form-check-group .form-check {
+    margin-bottom: 0.25rem;
+}
+</style>
+
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-exchange-alt me-2"></i>Transactions</h1>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-2">
+                <label for="mercury_account_id" class="form-label">Mercury Account</label>
+                <select class="form-select" id="mercury_account_id" name="mercury_account_id">
+                    <option value="">All Mercury Accounts</option>
+                    {% for mercury_account in mercury_accounts %}
+                    <option value="{{ mercury_account.id }}" {% if current_mercury_account_id == mercury_account.id %}selected{% endif %}>
+                        {{ mercury_account.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="account_id" class="form-label">Bank Account</label>
+                <select class="form-select" id="account_id" name="account_id">
+                    <option value="">All Accounts</option>
+                    {% for account in accounts %}
+                    <option value="{{ account.id }}" {% if current_account_id == account.id %}selected{% endif %}>
+                        {{ account.nickname or account.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="month" class="form-label">Month</label>
+                <select class="form-select" id="month" name="month">
+                    <option value="">All Months</option>
+                    {% for month in available_months %}
+                    <option value="{{ month.value }}" {% if current_month == month.value %}selected{% endif %}>
+                        {{ month.label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="category" class="form-label">Category</label>
+                <select class="form-select" id="category" name="category">
+                    <option value="">All Categories</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>
+                        {{ cat }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Status</label>
+                <div class="form-check-group" style="max-height: 80px; overflow-y: auto;">
+                    {% for status in available_statuses %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="status" value="{{ status }}" 
+                               id="status_{{ status }}" 
+                               {% if status in current_status %}checked{% endif %}>
+                        <label class="form-check-label" for="status_{{ status }}">
+                            {{ 'Posted' if status == 'sent' else status.title() }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">&nbsp;</label>
+                <div class="d-flex flex-column gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-filter me-1"></i>Filter
+                    </button>
+                    <a href="{{ url_for('transactions') }}" class="btn btn-outline-secondary btn-sm">Clear</a>
+                </div>
+            </div>
+        </form>
+        
+        <!-- Export buttons -->
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('transactions', 
+                               mercury_account_id=current_mercury_account_id,
+                               account_id=current_account_id,
+                               category=current_category,
+                               month=current_month,
+                               status=current_status,
+                               export='csv') }}" 
+                       class="btn btn-outline-success btn-sm">
+                        <i class="fas fa-file-csv me-1"></i>Export CSV
+                    </a>
+                    <a href="{{ url_for('transactions', 
+                               mercury_account_id=current_mercury_account_id,
+                               account_id=current_account_id,
+                               category=current_category,
+                               month=current_month,
+                               status=current_status,
+                               export='excel') }}" 
+                       class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-file-excel me-1"></i>Export Excel
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Transactions Table -->
+<div class="card">
+    <div class="card-header">
+        <h6 class="mb-0">Transaction History</h6>
+    </div>
+    <div class="card-body p-0">
+        {% if transactions %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Account</th>
+                        <th>Description</th>
+                        <th>Category</th>
+                        <th>Type</th>
+                        <th class="text-end">Amount</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for transaction in transactions %}
+                    <tr>
+                        <td>
+                            {% if transaction.posted_at %}
+                                {{ transaction.posted_at.strftime('%m/%d/%Y %I:%M %p') }}
+                                <small class="text-muted d-block">Posted</small>
+                            {% else %}
+                                {{ transaction.created_at.strftime('%m/%d/%Y %I:%M %p') }}
+                                <small class="text-warning d-block">Created (Pending)</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">
+                                {{ transaction.account.nickname or transaction.account.name if transaction.account else 'Unknown' }}
+                            </small>
+                        </td>
+                        <td>
+                            <div class="text-truncate" style="max-width: 250px;" title="{{ transaction.description or transaction.bank_description or 'No description' }}">
+                                {{ transaction.description or transaction.bank_description or 'No description' }}
+                            </div>
+                            {% if transaction.counterparty_name %}
+                            <small class="text-muted d-block">{{ transaction.counterparty_name }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ transaction.note or 'Uncategorized' }}</span>
+                        </td>
+                        <td>
+                            {% if transaction.kind %}
+                                <span class="badge bg-info">{{ transaction.kind }}</span>
+                            {% elif transaction.transaction_type %}
+                                <span class="badge bg-outline-secondary">{{ transaction.transaction_type }}</span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <strong class="{% if transaction.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                {% if transaction.amount < 0 %}-{% endif %}${{ "%.2f"|format(transaction.amount|abs) }}
+                            </strong>
+                        </td>
+                        <td>
+                            {% if transaction.status %}
+                                {% if transaction.status == 'sent' %}
+                                    <span class="badge bg-success">Posted</span>
+                                {% elif transaction.status == 'pending' %}
+                                    <span class="badge bg-warning">{{ transaction.status|title }}</span>
+                                {% elif transaction.status == 'failed' %}
+                                    <span class="badge bg-danger">{{ transaction.status|title }}</span>
+                                {% elif transaction.status == 'cancelled' %}
+                                    <span class="badge bg-secondary">{{ transaction.status|title }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ transaction.status|title }}</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-inbox fa-4x text-muted mb-3"></i>
+            <h4>No Transactions Found</h4>
+            <p class="text-muted">
+                {% if current_account_id or current_category or (current_status and current_status != ['sent', 'pending']) %}
+                    No transactions match your current filters.
+                {% else %}
+                    No transactions available. Connect a Mercury account to see your transaction history.
+                {% endif %}
+            </p>
+            {% if current_account_id or current_category or (current_status and current_status != ['sent', 'pending']) %}
+            <a href="{{ url_for('transactions') }}" class="btn btn-primary">Clear Filters</a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Pagination -->
+    {% if transactions %}
+    <div class="card-footer">
+        <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted">
+                Showing {{ transactions|length }} transactions
+            </small>
+            <div>
+                {% if page > 1 %}
+                <a href="{{ url_for('transactions', page=page-1, account_id=current_account_id, category=current_category, status=current_status) }}" 
+                   class="btn btn-sm btn-outline-primary">Previous</a>
+                {% endif %}
+                {% if transactions|length == 50 %}
+                <a href="{{ url_for('transactions', page=page+1, account_id=current_account_id, category=current_category, status=current_status) }}" 
+                   class="btn btn-sm btn-outline-primary">Next</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

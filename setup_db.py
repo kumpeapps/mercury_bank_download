@@ -19,7 +19,7 @@ import uuid
 import getpass
 from datetime import datetime
 
-from models import User, MercuryAccount, Account, Transaction
+from models import User, MercuryAccount, Account, Transaction, SystemSetting
 from models.base import create_engine_and_session, init_db
 from sqlalchemy.orm import Session
 
@@ -27,16 +27,17 @@ from sqlalchemy.orm import Session
 def hash_password(password: str) -> str:
     """
     Hash a password using bcrypt.
-    
+
     Args:
         password: Plain text password
-        
+
     Returns:
         str: Hashed password
     """
     try:
         import bcrypt
-        return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     except ImportError:
         print("⚠️  Warning: bcrypt not available, using plain text (NOT SECURE)")
         return password  # For development only - not secure!
@@ -56,10 +57,10 @@ def setup_database():
 def verify_migration(db: Session) -> bool:
     """
     Verify that the database has been properly migrated.
-    
+
     Args:
         db: Database session
-        
+
     Returns:
         bool: True if migration is complete
     """
@@ -68,12 +69,12 @@ def verify_migration(db: Session) -> bool:
         user_count = db.query(User).count()
         mercury_account_count = db.query(MercuryAccount).count()
         account_count = db.query(Account).count()
-        
+
         print(f"✅ Migration verification successful:")
         print(f"   - Users: {user_count}")
         print(f"   - Mercury Accounts: {mercury_account_count}")
         print(f"   - Accounts: {account_count}")
-        
+
         return True
     except Exception as e:
         print(f"❌ Migration verification failed: {e}")
@@ -83,40 +84,40 @@ def verify_migration(db: Session) -> bool:
 def create_production_mercury_account(db: Session) -> int:
     """
     Interactively create a production Mercury account.
-    
+
     Args:
         db: Database session
-        
+
     Returns:
         int: ID of the created Mercury account
     """
     print("\n📝 Creating Mercury Account Group")
     print("-" * 40)
-    
+
     name = input("Account group name: ").strip()
     if not name:
         raise ValueError("Account name is required")
-    
+
     api_key = getpass.getpass("Mercury API key: ").strip()
     if not api_key:
         raise ValueError("API key is required")
-    
-    sandbox_mode = input("Use sandbox mode? (y/N): ").lower().strip() == 'y'
+
+    sandbox_mode = input("Use sandbox mode? (y/N): ").lower().strip() == "y"
     description = input("Description (optional): ").strip() or None
-    
+
     mercury_account = MercuryAccount(
         name=name,
         api_key=api_key,
         sandbox_mode=sandbox_mode,
         description=description,
         is_active=True,
-        sync_enabled=True
+        sync_enabled=True,
     )
-    
+
     db.add(mercury_account)
     db.flush()
     mercury_account_id = mercury_account.id
-    
+
     print(f"✅ Created Mercury account: {name} (ID: {mercury_account_id})")
     return int(mercury_account_id) if mercury_account_id else 0
 
@@ -124,58 +125,58 @@ def create_production_mercury_account(db: Session) -> int:
 def create_production_user(db: Session, mercury_account_id: int) -> int:
     """
     Interactively create a production user.
-    
+
     Args:
         db: Database session
         mercury_account_id: ID of the Mercury account to associate with
-        
+
     Returns:
         int: ID of the created user
     """
     print("\n👤 Creating User Account")
     print("-" * 40)
-    
+
     username = input("Username: ").strip()
     if not username:
         raise ValueError("Username is required")
-    
+
     # Check if username already exists
     existing_user = db.query(User).filter(User.username == username).first()
     if existing_user:
         raise ValueError(f"Username '{username}' already exists")
-    
+
     email = input("Email: ").strip()
     if not email:
         raise ValueError("Email is required")
-    
+
     # Check if email already exists
     existing_email = db.query(User).filter(User.email == email).first()
     if existing_email:
         raise ValueError(f"Email '{email}' already exists")
-    
+
     password = getpass.getpass("Password: ").strip()
     if not password:
         raise ValueError("Password is required")
-    
+
     password_confirm = getpass.getpass("Confirm password: ").strip()
     if password != password_confirm:
         raise ValueError("Passwords do not match")
-    
+
     first_name = input("First name (optional): ").strip() or None
     last_name = input("Last name (optional): ").strip() or None
-    is_admin = input("Admin user? (y/N): ").lower().strip() == 'y'
-    
+    is_admin = input("Admin user? (y/N): ").lower().strip() == "y"
+
     # Hash the password
     password_hash = hash_password(password)
-    
+
     # Get the Mercury account to associate with
-    mercury_account = db.query(MercuryAccount).filter(
-        MercuryAccount.id == mercury_account_id
-    ).first()
-    
+    mercury_account = (
+        db.query(MercuryAccount).filter(MercuryAccount.id == mercury_account_id).first()
+    )
+
     if not mercury_account:
         raise ValueError(f"Mercury account {mercury_account_id} not found")
-    
+
     user = User(
         username=username,
         email=email,
@@ -183,16 +184,16 @@ def create_production_user(db: Session, mercury_account_id: int) -> int:
         first_name=first_name,
         last_name=last_name,
         is_active=True,
-        is_admin=is_admin
+        is_admin=is_admin,
     )
-    
+
     # Associate user with Mercury account
     user.mercury_accounts.append(mercury_account)
-    
+
     db.add(user)
     db.flush()
     user_id = user.id
-    
+
     print(f"✅ Created user: {username} (ID: {user_id})")
     return int(user_id) if user_id else 0
 
@@ -200,10 +201,10 @@ def create_production_user(db: Session, mercury_account_id: int) -> int:
 def create_sample_mercury_account(db: Session) -> int:
     """
     Create a sample Mercury account group.
-    
+
     Args:
         db: Database session
-        
+
     Returns:
         int: ID of the created Mercury account
     """
@@ -213,9 +214,9 @@ def create_sample_mercury_account(db: Session) -> int:
         sandbox_mode=True,  # Set to False for production
         description="Sample Mercury Bank account group for testing",
         is_active=True,
-        sync_enabled=True
+        sync_enabled=True,
     )
-    
+
     db.add(sample_mercury_account)
     db.flush()  # Flush to get the auto-generated ID
     mercury_account_id = sample_mercury_account.id
@@ -226,22 +227,22 @@ def create_sample_mercury_account(db: Session) -> int:
 def create_sample_user(db: Session, mercury_account_id: int) -> int:
     """
     Create a sample user and associate with the Mercury account.
-    
+
     Args:
         db: Database session
         mercury_account_id: ID of the Mercury account to associate with
-        
+
     Returns:
         int: ID of the created user
     """
     # Get the Mercury account to associate with
-    mercury_account = db.query(MercuryAccount).filter(
-        MercuryAccount.id == mercury_account_id
-    ).first()
-    
+    mercury_account = (
+        db.query(MercuryAccount).filter(MercuryAccount.id == mercury_account_id).first()
+    )
+
     if not mercury_account:
         raise ValueError(f"Mercury account {mercury_account_id} not found")
-    
+
     sample_user = User(
         username="admin",
         email="admin@company.com",
@@ -249,12 +250,12 @@ def create_sample_user(db: Session, mercury_account_id: int) -> int:
         first_name="Admin",
         last_name="User",
         is_active=True,
-        is_admin=True
+        is_admin=True,
     )
-    
+
     # Associate user with Mercury account
     sample_user.mercury_accounts.append(mercury_account)
-    
+
     db.add(sample_user)
     db.flush()  # Flush to get the auto-generated ID
     user_id = sample_user.id
@@ -266,72 +267,72 @@ def main():
     """Main setup function."""
     print("🏦 Mercury Bank Database Setup")
     print("=" * 50)
-    
+
     # Setup database
     setup_database()
-    
+
     # Create database session
     engine, session_local = create_engine_and_session()
     db = session_local()
-    
+
     try:
         # Verify migration
         if not verify_migration(db):
             print("❌ Database verification failed. Please run migration.sql first.")
             sys.exit(1)
-        
+
         print("\n🚀 Setup Options:")
         print("1. Create sample data for testing")
         print("2. Create production data interactively")
         print("3. Skip data creation")
-        
+
         choice = input("\nChoose an option (1-3): ").strip()
-        
-        if choice == '1':
+
+        if choice == "1":
             print("\n📊 Creating sample data...")
             # Create sample Mercury account
             mercury_account_id = create_sample_mercury_account(db)
-            
+
             # Create sample user
             user_id = create_sample_user(db, mercury_account_id)
-            
+
             db.commit()
             print("\n✅ Sample data created successfully!")
             print(f"   Mercury Account ID: {mercury_account_id}")
             print(f"   User ID: {user_id}")
-            
+
             print("\n⚠️  Next steps for sample data:")
             print("   1. Update the Mercury account with your actual API key")
             print("   2. Update the user with a proper password hash")
             print("   3. Run the sync script to start syncing data")
-            
-        elif choice == '2':
+
+        elif choice == "2":
             print("\n🏭 Creating production data...")
-            
+
             # Create production Mercury account
             mercury_account_id = create_production_mercury_account(db)
-            
+
             # Create production user
             user_id = create_production_user(db, mercury_account_id)
-            
+
             db.commit()
             print("\n✅ Production data created successfully!")
             print(f"   Mercury Account ID: {mercury_account_id}")
             print(f"   User ID: {user_id}")
-            
+
             print("\n🎉 Next steps:")
             print("   1. Start the synchronization service")
             print("   2. Monitor logs for sync activity")
             print("   3. Set up additional users as needed")
-            
-        elif choice == '3':
+
+        elif choice == "3":
             print("\n⏭️  Skipping data creation")
             print("   You can create data later using this script or manually")
-        
+
         else:
             print("❌ Invalid choice. Exiting.")
             sys.exit(1)
-            
+
     except KeyboardInterrupt:
         print("\n\n⚠️  Setup interrupted by user")
         db.rollback()
@@ -342,7 +343,7 @@ def main():
         sys.exit(1)
     finally:
         db.close()
-    
+
     print("\n🎯 Database setup complete!")
     print("\n📚 Additional Resources:")
     print("   - Multi-Account Guide: MULTI_ACCOUNT_README.md")

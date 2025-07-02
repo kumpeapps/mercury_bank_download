@@ -16,8 +16,15 @@ from mercury_bank_api import MercuryBankAPIClient  # type: ignore[import]
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
-from models import Account, Transaction, MercuryAccount
-from models.base import create_engine_and_session, init_db
+# Import all models to ensure they're available for SQLAlchemy relationship resolution
+import models  # This imports all models through __init__.py
+from models.account import Account
+from models.transaction import Transaction
+from models.mercury_account import MercuryAccount
+from models.user import User
+from models.user_settings import UserSettings
+from models.system_setting import SystemSetting
+from models.base import create_engine_and_session, init_sync_db
 
 # Configure logging
 logging.basicConfig(
@@ -56,7 +63,7 @@ class MercuryBankSyncer:
         """
         # Initialize database
         self.engine, self.session_local = create_engine_and_session()
-        init_db()
+        init_sync_db()
 
         logger.info("Mercury Bank Syncer initialized")
 

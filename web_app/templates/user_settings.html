@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+
+{% block title %}User Settings - Mercury Bank{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-cog me-2"></i>User Settings</h1>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <form method="POST">
+            <!-- Primary Mercury Account Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-star me-2"></i>
+                        Primary Mercury Account
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Set a default Mercury account that will be automatically selected on the dashboard, 
+                        transactions, and reports pages. This helps streamline your workflow if you primarily 
+                        work with one Mercury account.
+                    </p>
+                    
+                    <div class="mb-3">
+                        <label for="primary_mercury_account_id" class="form-label">Primary Mercury Account</label>
+                        <select class="form-select" id="primary_mercury_account_id" name="primary_mercury_account_id">
+                            <option value="">No Primary Account (Show All)</option>
+                            {% for mercury_account in mercury_accounts %}
+                            <option value="{{ mercury_account.id }}" 
+                                    {% if settings.primary_mercury_account_id == mercury_account.id %}selected{% endif %}>
+                                {{ mercury_account.name }}
+                                {% if mercury_account.description %}
+                                    - {{ mercury_account.description }}
+                                {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            When set, this account will be automatically filtered on dashboard, transactions, and reports pages.
+                            You can always view all accounts by using the "Show All" options on those pages.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Primary Account Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-bookmark me-2"></i>
+                        Primary Account
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Set a default account within your primary Mercury account. This account will be 
+                        automatically selected on relevant pages when your primary Mercury account is active.
+                    </p>
+                    
+                    <div class="mb-3">
+                        <label for="primary_account_id" class="form-label">Primary Account</label>
+                        <select class="form-select" id="primary_account_id" name="primary_account_id">
+                            <option value="">No Primary Account</option>
+                            {% if accessible_accounts %}
+                                {% for account in accessible_accounts %}
+                                <option value="{{ account.id }}" 
+                                        {% if settings.primary_account_id == account.id %}selected{% endif %}
+                                        data-mercury-account="{{ account.mercury_account_id }}">
+                                    {% if account.nickname %}
+                                        {{ account.nickname }}
+                                    {% else %}
+                                        {{ account.name }}
+                                    {% endif %}
+                                    {% if account.balance %}
+                                        - ${{ "%.2f"|format(account.balance) }}
+                                    {% endif %}
+                                    ({{ account.mercury_account.name }})
+                                </option>
+                                {% endfor %}
+                            {% else %}
+                                <option disabled>No accessible accounts found</option>
+                            {% endif %}
+                        </select>
+                        <div class="form-text">
+                            This account will be pre-selected when viewing account-specific pages. 
+                            Only accounts you have access to are shown.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin Privileges Section (Only visible to admins) -->
+            {% if template_user.is_admin %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-shield-alt me-2"></i>
+                        Admin Privileges
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Warning:</strong> Admin privileges grant full access to all system features including user management, 
+                        Mercury account configuration, and system settings. Only grant admin access to trusted users.
+                    </div>
+                    
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="is_admin" name="is_admin"
+                               {% if settings.is_admin %}checked{% endif %}>
+                        <label class="form-check-label" for="is_admin">
+                            <strong>Grant Admin Privileges</strong>
+                        </label>
+                        <div class="form-text">
+                            Admin users can manage other users, configure Mercury accounts, and access all system features.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Dashboard Preferences -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-tachometer-alt me-2"></i>
+                        Dashboard Preferences
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="dashboard_show_pending" name="dashboard_show_pending"
+                               {% if settings.get_dashboard_preference('show_pending', True) %}checked{% endif %}>
+                        <label class="form-check-label" for="dashboard_show_pending">
+                            Include Pending Transactions
+                        </label>
+                        <div class="form-text">
+                            Show pending transactions in dashboard recent transactions list.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Report Preferences -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-bar me-2"></i>
+                        Report Preferences
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="report_default_view" class="form-label">Default View</label>
+                                <select class="form-select" id="report_default_view" name="report_default_view">
+                                    <option value="charts" {% if settings.get_report_preference('default_view', 'charts') == 'charts' %}selected{% endif %}>
+                                        Charts View
+                                    </option>
+                                    <option value="table" {% if settings.get_report_preference('default_view', 'charts') == 'table' %}selected{% endif %}>
+                                        Table View
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="report_default_period" class="form-label">Default Analysis Period</label>
+                                <select class="form-select" id="report_default_period" name="report_default_period">
+                                    <option value="6" {% if settings.get_report_preference('default_period', '12') == '6' %}selected{% endif %}>
+                                        6 Months
+                                    </option>
+                                    <option value="12" {% if settings.get_report_preference('default_period', '12') == '12' %}selected{% endif %}>
+                                        12 Months
+                                    </option>
+                                    <option value="24" {% if settings.get_report_preference('default_period', '12') == '24' %}selected{% endif %}>
+                                        24 Months
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transaction Preferences -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-exchange-alt me-2"></i>
+                        Transaction Preferences
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="transaction_page_size" class="form-label">Page Size</label>
+                                <select class="form-select" id="transaction_page_size" name="transaction_page_size">
+                                    <option value="25" {% if settings.get_transaction_preference('default_page_size', 50) == 25 %}selected{% endif %}>
+                                        25 transactions
+                                    </option>
+                                    <option value="50" {% if settings.get_transaction_preference('default_page_size', 50) == 50 %}selected{% endif %}>
+                                        50 transactions
+                                    </option>
+                                    <option value="100" {% if settings.get_transaction_preference('default_page_size', 50) == 100 %}selected{% endif %}>
+                                        100 transactions
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Default Status Filter</label>
+                                <div class="form-check-group" style="max-height: 120px; overflow-y: auto;">
+                                    {% set default_statuses = settings.get_transaction_preference('default_status_filter', ['sent', 'pending']) %}
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="transaction_default_status" 
+                                               value="pending" id="status_pending"
+                                               {% if 'pending' in default_statuses %}checked{% endif %}>
+                                        <label class="form-check-label" for="status_pending">
+                                            Pending
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="transaction_default_status" 
+                                               value="sent" id="status_sent"
+                                               {% if 'sent' in default_statuses %}checked{% endif %}>
+                                        <label class="form-check-label" for="status_sent">
+                                            Posted
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="transaction_default_status" 
+                                               value="cancelled" id="status_cancelled"
+                                               {% if 'cancelled' in default_statuses %}checked{% endif %}>
+                                        <label class="form-check-label" for="status_cancelled">
+                                            Cancelled
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="transaction_default_status" 
+                                               value="failed" id="status_failed"
+                                               {% if 'failed' in default_statuses %}checked{% endif %}>
+                                        <label class="form-check-label" for="status_failed">
+                                            Failed
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Save Button -->
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save me-1"></i>Save Settings
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Help Section -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Settings Help
+                </h5>
+            </div>
+            <div class="card-body">
+                <h6>Primary Mercury Account</h6>
+                <p class="text-muted small">
+                    Setting a primary Mercury account helps streamline your workflow by automatically 
+                    filtering to your most-used account. You can always switch back to viewing all 
+                    accounts when needed.
+                </p>
+
+                <h6>Dashboard Preferences</h6>
+                <p class="text-muted small">
+                    Customize how your dashboard displays information, including whether to show 
+                    pending transactions by default.
+                </p>
+
+                <h6>Report Preferences</h6>
+                <p class="text-muted small">
+                    Set your preferred default view and analysis periods for financial reports. 
+                    These can still be changed on the reports page.
+                </p>
+
+                <h6>Transaction Preferences</h6>
+                <p class="text-muted small">
+                    Control how many transactions are shown per page and which transaction 
+                    statuses are included by default when viewing transactions.
+                </p>
+
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    <small>
+                        <strong>Tip:</strong> These settings only affect the default behavior. 
+                        You can always override them on individual pages.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const mercuryAccountSelect = document.getElementById('primary_mercury_account_id');
+    const accountSelect = document.getElementById('primary_account_id');
+    
+    if (mercuryAccountSelect && accountSelect) {
+        // Store all account options
+        const allAccountOptions = Array.from(accountSelect.options);
+        
+        function filterAccounts() {
+            const selectedMercuryAccountId = mercuryAccountSelect.value;
+            
+            // Clear current options except the first "No Primary Account" option
+            accountSelect.innerHTML = '<option value="">No Primary Account</option>';
+            
+            if (selectedMercuryAccountId) {
+                // Add only accounts that belong to the selected Mercury account
+                allAccountOptions.forEach(option => {
+                    if (option.value && option.dataset.mercuryAccount === selectedMercuryAccountId) {
+                        accountSelect.appendChild(option.cloneNode(true));
+                    }
+                });
+            } else {
+                // If no Mercury account selected, show all accounts
+                allAccountOptions.forEach(option => {
+                    if (option.value) { // Skip the disabled option
+                        accountSelect.appendChild(option.cloneNode(true));
+                    }
+                });
+            }
+        }
+        
+        // Filter accounts when Mercury account selection changes
+        mercuryAccountSelect.addEventListener('change', filterAccounts);
+        
+        // Initial filter on page load
+        filterAccounts();
+    }
+});
+</script>
+{% endblock %}

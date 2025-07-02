@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Add Mercury Account{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-plus me-2"></i>Add Mercury Account</h1>
+    <a href="{{ url_for('accounts') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Accounts
+    </a>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Connect New Mercury Bank Account</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Account Name</label>
+                        <input type="text" class="form-control" id="name" name="name" 
+                               placeholder="e.g., My Business Account" required>
+                        <div class="form-text">A friendly name to identify this Mercury account</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="api_key" class="form-label">Mercury API Key</label>
+                        <input type="password" class="form-control" id="api_key" name="api_key" 
+                               placeholder="Enter your Mercury API key" required>
+                        <div class="form-text">
+                            Your Mercury API key. You can find this in your Mercury dashboard under API settings.
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="environment" class="form-label">Environment</label>
+                        <select class="form-select" id="environment" name="environment">
+                            <option value="sandbox">Sandbox (Testing)</option>
+                            <option value="production">Production (Live)</option>
+                        </select>
+                        <div class="form-text">
+                            Use Sandbox for testing. Switch to Production when you're ready to use live data.
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Security Note:</strong> Your API key is encrypted and stored securely. 
+                        We never store your API key in plain text.
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('accounts') }}" class="btn btn-outline-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-plus me-2"></i>Add Account
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h6 class="mb-0">How to get your Mercury API Key</h6>
+            </div>
+            <div class="card-body">
+                <ol class="mb-0">
+                    <li>Log in to your Mercury Bank dashboard</li>
+                    <li>Navigate to <strong>Settings</strong> → <strong>API</strong></li>
+                    <li>Click <strong>Generate New API Key</strong></li>
+                    <li>Copy the generated key and paste it above</li>
+                    <li>Make sure to save the key securely as Mercury won't show it again</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
