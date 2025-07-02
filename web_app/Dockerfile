@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     build-essential \
+    libffi-dev \
     default-libmysqlclient-dev \
     pkg-config \
     python3-dev \
