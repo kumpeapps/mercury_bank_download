@@ -1,7 +1,7 @@
 name: Push Sync GUI Service to Docker Hub (Beta)
 
 concurrency:
-  group: beta
+  group: gui-beta
   cancel-in-progress: true
 
 on:
@@ -13,7 +13,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: beta
+    environment: gui-beta
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
