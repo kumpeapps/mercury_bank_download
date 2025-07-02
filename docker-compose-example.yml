@@ -1,30 +1,16 @@
-services:
-  # Database service (optional - if you want to include it here)
-  # db:
-  #   image: mysql:8.0
-  #   environment:
-  #     MYSQL_ROOT_PASSWORD: rootpassword
-  #     MYSQL_DATABASE: Bot_mercury
-  #     MYSQL_USER: Bot_mercury
-  #     MYSQL_PASSWORD: password
-  #   ports:
-  #     - "3306:3306"
-  #   networks:
-  #     - mercury-network
+x-common-variables: &common-variables
+   DATABASE_URL: mysql+pymysql://user:password@server:3306/Database
+   SYNC_DAYS_BACK: 30
+   SYNC_INTERVAL_MINUTES: 2
+   RUN_ONCE: false
+   SECRET_KEY: change-this-secret-key-for-production
 
-  # Mercury sync service
+services:
   mercury-sync:
-    image: "justinkumpe/mercury-bank-sync:latest"
+    image: "justinkumpe/mercury-bank-sync:latest-beta"
     # Uncomment below for local development
     # build: ./sync_app
-    environment:
-      # Database configuration
-      - DATABASE_URL=mysql+pymysql://Bot_mercury:passwrod@db:3306/Bot_mercury
-      
-      # Sync configuration
-      - SYNC_DAYS_BACK=30
-      - SYNC_INTERVAL_MINUTES=2
-      - RUN_ONCE=false
+    environment: *common-variables
     
     volumes:
       - ./sync_app/logs:/app/logs
@@ -36,12 +22,10 @@ services:
 
   # Web application service
   web-app:
-    image: "justinkumpe/mercury-bank-sync-gui:latest"
+    image: "justinkumpe/mercury-bank-sync-gui:latest-beta"
     # Uncomment below for local development
     # build: ./web_app
-    environment:
-      - DATABASE_URL=mysql+pymysql://Bot_mercury:password@db:3306/Bot_mercury
-      - SECRET_KEY=your-secret-key-change-this-in-production
+    environment: *common-variables
     
     ports:
       - "5001:5000"
@@ -53,6 +37,9 @@ services:
     
     networks:
       - mercury-network
+    
+    depends_on:
+      - mercury-sync
 
   # Database admin interface
   adminer:
