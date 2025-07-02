@@ -71,14 +71,14 @@ class MigrationManager:
             raise
 
     def get_migration_files(self) -> List[str]:
-        """Get list of migration files sorted by filename."""
+        """Get list of Python migration files sorted by filename."""
         if not os.path.exists(self.migrations_dir):
             logger.info("Migrations directory does not exist")
             return []
 
         migration_files = []
         for filename in os.listdir(self.migrations_dir):
-            if filename.endswith('.sql'):
+            if filename.endswith('.py') and not filename.startswith('__') and filename != 'README.md':
                 migration_files.append(filename)
         
         return sorted(migration_files)
@@ -109,14 +109,18 @@ class MigrationManager:
 
     def execute_migration(self, filename: str) -> bool:
         """
-        Execute a single migration file.
+        Execute a single Python migration file.
         
         Args:
-            filename (str): Name of the migration file
+            filename (str): Name of the migration file (must be .py)
             
         Returns:
             bool: True if successful, False otherwise
         """
+        if not filename.endswith('.py'):
+            logger.error("Only Python migrations are supported: %s", filename)
+            return False
+            
         filepath = os.path.join(self.migrations_dir, filename)
         
         if not os.path.exists(filepath):
@@ -125,49 +129,48 @@ class MigrationManager:
 
         session = self.Session()
         try:
-            # Read migration content
-            with open(filepath, 'r', encoding='utf-8') as f:
-                migration_content = f.read()
-
             # Calculate checksum
             checksum = self.calculate_file_checksum(filepath)
 
-            # Begin transaction
-            session.begin()
-
-            # Remove comments first
-            lines = [line for line in migration_content.split('\n') 
-                    if line.strip() and not line.strip().startswith('--')]
-            content_without_comments = '\n'.join(lines)
+            # Import the migration module
+            import sys
+            import importlib.util
             
-            # Split by semicolon to get individual statements
-            statements = [stmt.strip() for stmt in content_without_comments.split(';') if stmt.strip()]
-            
-            for statement in statements:
-                if statement:
-                    logger.info("Executing SQL statement...")
-                    session.execute(text(statement))
-
-            # Record migration as executed
-            session.execute(
-                text("INSERT INTO migrations (filename, checksum, executed_at) VALUES (:filename, :checksum, :executed_at)"),
-                {
-                    "filename": filename,
-                    "checksum": checksum,
-                    "executed_at": datetime.utcnow()
-                }
+            spec = importlib.util.spec_from_file_location(
+                filename[:-3],  # Remove .py extension
+                filepath
             )
             
-            session.commit()
-            logger.info("Successfully executed migration: %s", filename)
-            return True
+            if spec is None or spec.loader is None:
+                logger.error("Could not load migration module: %s", filename)
+                return False
+                
+            migration_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(migration_module)
+            
+            # Execute the upgrade function
+            if hasattr(migration_module, 'upgrade'):
+                logger.info("Executing Python migration: %s", filename)
+                migration_module.upgrade(self.engine)
+                
+                # Record migration as executed
+                session.execute(
+                    text("INSERT INTO migrations (filename, checksum, executed_at) VALUES (:filename, :checksum, :executed_at)"),
+                    {
+                        "filename": filename,
+                        "checksum": checksum,
+                        "executed_at": datetime.utcnow()
+                    }
+                )
+                session.commit()
+                logger.info("Successfully executed migration: %s", filename)
+                return True
+            else:
+                logger.error("Migration file missing 'upgrade' function: %s", filename)
+                return False
 
-        except SQLAlchemyError as e:
-            logger.error("Error executing migration %s: %s", filename, e)
-            session.rollback()
-            return False
         except Exception as e:
-            logger.error("Unexpected error executing migration %s: %s", filename, e)
+            logger.error("Error executing migration %s: %s", filename, e)
             session.rollback()
             return False
         finally:

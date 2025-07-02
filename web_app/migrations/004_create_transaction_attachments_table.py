@@ -62,7 +62,7 @@ def upgrade(engine=None):
                 INDEX idx_transaction_attachments_filename (filename),
                 INDEX idx_transaction_attachments_content_type (content_type),
                 INDEX idx_transaction_attachments_upload_date (upload_date)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
         """))
         
         db_session.commit()
