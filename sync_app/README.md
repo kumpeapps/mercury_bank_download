@@ -10,6 +10,7 @@ This service handles synchronizing Mercury Bank transaction data to the database
 - Database migration management
 - Health monitoring
 
+
 ## Environment Variables
 
 | Variable | Description | Default |
