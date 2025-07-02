@@ -119,6 +119,25 @@ def initialize_system_settings():
                 "Users are managed by an external system (locks user management settings)",
                 False,  # This setting itself is never editable via UI
             ),
+            # Branding settings
+            (
+                "app_name",
+                "Mercury Bank Integration",
+                "The name of the application displayed in the header and page titles",
+                True,
+            ),
+            (
+                "app_description",
+                "Mercury Bank data synchronization and management platform",
+                "Description of the application displayed on the login page and dashboard",
+                True,
+            ),
+            (
+                "logo_url",
+                "",
+                "URL to the application logo image (leave empty for default logo)",
+                True,
+            ),
         ]
 
         for key, value, description, is_editable in settings_to_create:
@@ -136,11 +155,11 @@ def initialize_system_settings():
                 # Always update the external management setting to match environment variable
                 existing.value = value
                 print(f"✅ Updated users_externally_managed setting to: {value}")
-            elif users_externally_managed:
-                # When users are externally managed, update all settings
+            elif users_externally_managed and key in ["registration_enabled", "prevent_user_deletion"]:
+                # When users are externally managed, only update user management settings (not branding)
                 existing.value = value
                 existing.is_editable = is_editable
-                print(f"✅ Updated setting due to external management: {key} = {value}")
+                print(f"✅ Updated user management setting due to external management: {key} = {value}")
 
         db_session.commit()
     except Exception as e:
@@ -334,6 +353,30 @@ def inject_user():
         # Return the session-bound user
         return dict(template_user=user)
     return dict(template_user=None)
+
+
+@app.context_processor
+def inject_branding():
+    """Inject branding settings for template use."""
+    try:
+        db_session = Session()
+        app_name = SystemSetting.get_value(db_session, "app_name", "Mercury Bank Integration")
+        app_description = SystemSetting.get_value(db_session, "app_description", "Mercury Bank data synchronization and management platform")
+        logo_url = SystemSetting.get_value(db_session, "logo_url", "")
+        db_session.close()
+        
+        return dict(
+            app_name=app_name,
+            app_description=app_description,
+            logo_url=logo_url
+        )
+    except Exception as e:
+        print(f"Error getting branding settings: {e}")
+        return dict(
+            app_name="Mercury Bank Integration",
+            app_description="Mercury Bank data synchronization and management platform",
+            logo_url=""
+        )
 
 
 @app.teardown_appcontext
@@ -1658,15 +1701,11 @@ def admin_settings():
         )
 
         if request.method == "POST":
-            # Block setting changes if users are externally managed
-            if users_externally_managed:
-                flash(
-                    "Settings cannot be changed because users are externally managed.",
-                    "error",
-                )
-                return redirect(url_for("admin_settings"))
-
+            # Define branding settings that are always editable
+            branding_settings = ["app_name", "app_description", "logo_url"]
+            
             # Update settings
+            updated_count = 0
             for key, value in request.form.items():
                 if key.startswith("setting_"):
                     setting_key = key.replace("setting_", "")
@@ -1676,10 +1715,23 @@ def admin_settings():
                         .first()
                     )
                     if setting and setting.is_editable:
+                        # Allow branding settings to be changed even when users are externally managed
+                        is_branding_setting = setting_key in branding_settings
+                        
+                        # Block user management settings if users are externally managed
+                        if users_externally_managed and not is_branding_setting:
+                            continue  # Skip user management settings
+                        
                         setting.value = value
+                        updated_count += 1
 
-            db_session.commit()
-            flash("Settings updated successfully!", "success")
+            if updated_count > 0:
+                db_session.commit()
+                flash("Settings updated successfully!", "success")
+            elif users_externally_managed:
+                flash("Only branding settings can be changed when users are externally managed.", "warning")
+            else:
+                flash("No settings were updated.", "info")
             return redirect(url_for("admin_settings"))
 
         # Get all editable settings

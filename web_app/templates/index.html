@@ -1,15 +1,19 @@
 {% extends "base.html" %}
 
-{% block title %}Welcome - Mercury Bank Dashboard{% endblock %}
+{% block title %}Welcome - {{ app_name }}{% endblock %}
 
 {% block content %}
 <div class="container">
     <div class="row justify-content-center min-vh-100 align-items-center">
         <div class="col-lg-8 col-md-10">
             <div class="text-center mb-5">
-                <i class="fas fa-university fa-4x text-primary mb-3"></i>
-                <h1 class="display-4 fw-bold">Mercury Bank Dashboard</h1>
-                <p class="lead text-muted">Manage your Mercury Bank accounts and track your finances with beautiful reports</p>
+                {% if logo_url %}
+                    <img src="{{ logo_url }}" alt="{{ app_name }} Logo" style="max-height: 80px; max-width: 300px;" class="mb-3">
+                {% else %}
+                    <i class="fas fa-university fa-4x text-primary mb-3"></i>
+                {% endif %}
+                <h1 class="display-4 fw-bold">{{ app_name }}</h1>
+                <p class="lead text-muted">{{ app_description }}</p>
             </div>
             
             <div class="row g-4">

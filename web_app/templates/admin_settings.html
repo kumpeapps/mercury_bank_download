@@ -40,53 +40,117 @@
                     </div>
                     {% endif %}
                     <form method="post">
-                        {% for setting in settings %}
-                        <div class="mb-3">
-                            <label for="setting_{{ setting.key }}" class="form-label">
-                                {{ setting.key|replace('_', ' ')|title }}
-                            </label>
-                            {% if setting.description %}
-                            <small class="form-text text-muted d-block">{{ setting.description }}</small>
-                            {% endif %}
-                            
-                            {% if setting.key == 'registration_enabled' %}
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" 
-                                       id="setting_{{ setting.key }}" 
-                                       name="setting_{{ setting.key }}" 
-                                       value="true"
-                                       {% if setting.value.lower() in ['true', '1', 'yes', 'on'] %}checked{% endif %}
-                                       {% if users_externally_managed %}disabled{% endif %}>
-                                <label class="form-check-label" for="setting_{{ setting.key }}">
-                                    Enable user registration
-                                </label>
-                            </div>
-                            <!-- Hidden field to ensure we get a value even when unchecked -->
-                            <input type="hidden" name="setting_{{ setting.key }}" value="false">
-                            {% elif setting.key == 'prevent_user_deletion' %}
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" 
-                                       id="setting_{{ setting.key }}" 
-                                       name="setting_{{ setting.key }}" 
-                                       value="true"
-                                       {% if setting.value.lower() in ['true', '1', 'yes', 'on'] %}checked{% endif %}
-                                       {% if users_externally_managed %}disabled{% endif %}>
-                                <label class="form-check-label" for="setting_{{ setting.key }}">
-                                    Prevent user account deletion
-                                </label>
-                            </div>
-                            <!-- Hidden field to ensure we get a value even when unchecked -->
-                            <input type="hidden" name="setting_{{ setting.key }}" value="false">
-                            {% else %}
-                            <input type="text" 
-                                   class="form-control" 
-                                   id="setting_{{ setting.key }}" 
-                                   name="setting_{{ setting.key }}" 
-                                   value="{{ setting.value or '' }}"
-                                   {% if not setting.is_editable or users_externally_managed %}disabled{% endif %}>
-                            {% endif %}
+                        <!-- Branding Settings Section -->
+                        <div class="mb-4">
+                            <h6 class="text-primary border-bottom pb-2 mb-3">
+                                <i class="fas fa-paint-brush"></i> Application Branding
+                            </h6>
+                            {% for setting in settings %}
+                                {% if setting.key in ['app_name', 'app_description', 'logo_url'] %}
+                                <div class="mb-3">
+                                    <label for="setting_{{ setting.key }}" class="form-label">
+                                        {% if setting.key == 'app_name' %}
+                                            Application Name
+                                        {% elif setting.key == 'app_description' %}
+                                            Application Description
+                                        {% elif setting.key == 'logo_url' %}
+                                            Logo URL
+                                        {% else %}
+                                            {{ setting.key|replace('_', ' ')|title }}
+                                        {% endif %}
+                                    </label>
+                                    {% if setting.description %}
+                                    <small class="form-text text-muted d-block">{{ setting.description }}</small>
+                                    {% endif %}
+                                    
+                                    {% if setting.key == 'app_description' %}
+                                    <textarea class="form-control" 
+                                              id="setting_{{ setting.key }}" 
+                                              name="setting_{{ setting.key }}" 
+                                              rows="3"
+                                              {% if not setting.is_editable %}disabled{% endif %}>{{ setting.value or '' }}</textarea>
+                                    {% elif setting.key == 'logo_url' %}
+                                    <input type="url" 
+                                           class="form-control" 
+                                           id="setting_{{ setting.key }}" 
+                                           name="setting_{{ setting.key }}" 
+                                           value="{{ setting.value or '' }}"
+                                           placeholder="https://example.com/logo.png"
+                                           {% if not setting.is_editable %}disabled{% endif %}>
+                                    {% if setting.value %}
+                                    <div class="mt-2">
+                                        <small class="text-muted">Current logo preview:</small><br>
+                                        <img src="{{ setting.value }}" alt="Logo Preview" style="max-height: 50px; max-width: 200px;" class="border rounded">
+                                    </div>
+                                    {% endif %}
+                                    {% else %}
+                                    <input type="text" 
+                                           class="form-control" 
+                                           id="setting_{{ setting.key }}" 
+                                           name="setting_{{ setting.key }}" 
+                                           value="{{ setting.value or '' }}"
+                                           {% if not setting.is_editable %}disabled{% endif %}>
+                                    {% endif %}
+                                </div>
+                                {% endif %}
+                            {% endfor %}
                         </div>
-                        {% endfor %}
+
+                        <!-- User Management Settings Section -->
+                        <div class="mb-4">
+                            <h6 class="text-primary border-bottom pb-2 mb-3">
+                                <i class="fas fa-users-cog"></i> User Management
+                            </h6>
+                            {% for setting in settings %}
+                                {% if setting.key not in ['app_name', 'app_description', 'logo_url', 'users_externally_managed'] %}
+                                <div class="mb-3">
+                                    <label for="setting_{{ setting.key }}" class="form-label">
+                                        {{ setting.key|replace('_', ' ')|title }}
+                                    </label>
+                                    {% if setting.description %}
+                                    <small class="form-text text-muted d-block">{{ setting.description }}</small>
+                                    {% endif %}
+                                    
+                                    {% if setting.key == 'registration_enabled' %}
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" 
+                                               id="setting_{{ setting.key }}" 
+                                               name="setting_{{ setting.key }}" 
+                                               value="true"
+                                               {% if setting.value.lower() in ['true', '1', 'yes', 'on'] %}checked{% endif %}
+                                               {% if users_externally_managed %}disabled{% endif %}>
+                                        <label class="form-check-label" for="setting_{{ setting.key }}">
+                                            Enable user registration
+                                        </label>
+                                    </div>
+                                    <!-- Hidden field to ensure we get a value even when unchecked -->
+                                    <input type="hidden" name="setting_{{ setting.key }}" value="false">
+                                    {% elif setting.key == 'prevent_user_deletion' %}
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" 
+                                               id="setting_{{ setting.key }}" 
+                                               name="setting_{{ setting.key }}" 
+                                               value="true"
+                                               {% if setting.value.lower() in ['true', '1', 'yes', 'on'] %}checked{% endif %}
+                                               {% if users_externally_managed %}disabled{% endif %}>
+                                        <label class="form-check-label" for="setting_{{ setting.key }}">
+                                            Prevent user account deletion
+                                        </label>
+                                    </div>
+                                    <!-- Hidden field to ensure we get a value even when unchecked -->
+                                    <input type="hidden" name="setting_{{ setting.key }}" value="false">
+                                    {% else %}
+                                    <input type="text" 
+                                           class="form-control" 
+                                           id="setting_{{ setting.key }}" 
+                                           name="setting_{{ setting.key }}" 
+                                           value="{{ setting.value or '' }}"
+                                           {% if not setting.is_editable or users_externally_managed %}disabled{% endif %}>
+                                    {% endif %}
+                                </div>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
                         
                         {% if not settings %}
                         <div class="alert alert-info">
@@ -97,9 +161,16 @@
                         
                         {% if settings %}
                         <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-primary" {% if users_externally_managed %}disabled{% endif %}>
+                            {% set has_editable_settings = settings|selectattr("is_editable")|list|length > 0 %}
+                            <button type="submit" class="btn btn-primary" {% if not has_editable_settings %}disabled{% endif %}>
                                 <i class="fas fa-save"></i> Save Settings
                             </button>
+                            {% if users_externally_managed %}
+                            <small class="text-muted mt-2">
+                                <i class="fas fa-info-circle"></i>
+                                Note: Only branding settings can be modified when users are externally managed.
+                            </small>
+                            {% endif %}
                         </div>
                         {% endif %}
                     </form>
