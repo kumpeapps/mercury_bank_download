@@ -1,4 +1,8 @@
-name: Push Docker Image to Docker Hub (Release)
+name: Push Sync GUI Service to Docker Hub (Release)
+
+concurrency:
+  group: release
+  cancel-in-progress: true
 
 on:
   release:
@@ -7,6 +11,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
@@ -20,5 +25,6 @@ jobs:
       - name: Build and Deploy Image
         run: |
             docker buildx build --push \
-                --tag justinkumpe/mercury_bank_download:${{ github.ref_name }} \
-                --platform linux/amd64,linux/arm/v7,linux/arm64 .
+                --tag ${{ secrets.DOCKER_USERNAME }}/mercury-bank-sync-gui:${{ github.ref_name }} \
+                --platform linux/amd64,linux/arm/v7,linux/arm64 \
+                ./web_app

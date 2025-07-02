@@ -1,12 +1,19 @@
-name: Push Docker Image to Docker Hub (Latest)
+name: Push Sync Service to Docker Hub (Latest)
+
+concurrency:
+  group: production
+  cancel-in-progress: true
 
 on:
   push:
-    branches: main
+    branches: [main]
+    paths: 
+      - 'sync_app/**'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
@@ -20,5 +27,6 @@ jobs:
       - name: Build and Deploy Image
         run: |
             docker buildx build --push \
-                --tag justinkumpe/mercury_bank_download:latest \
-                --platform linux/amd64,linux/arm/v7,linux/arm64 .
+                --tag ${{ secrets.DOCKER_USERNAME }}/mercury-bank-sync:latest \
+                --platform linux/amd64,linux/arm/v7,linux/arm64 \
+                ./sync_app
