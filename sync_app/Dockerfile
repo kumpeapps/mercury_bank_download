@@ -1,4 +1,4 @@
-# Try using a specific registry or different base image
+# Use Python 3.11 slim image
 FROM python:3.11-slim
 
 # Set environment variables
@@ -6,7 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Create app directory
+WORKDIR /app
+
+# Install system dependencies (this layer changes less frequently)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
@@ -15,10 +18,8 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libffi-dev \
     python3-dev \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-
-# Create app directory
-WORKDIR /app
 
 # Create logs directory
 RUN mkdir -p /app/logs
@@ -26,11 +27,11 @@ RUN mkdir -p /app/logs
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install Python dependencies (this layer will be cached if requirements.txt doesn't change)
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir --prefer-binary -r requirements.txt
 
-# Copy application code
+# Copy application code (this layer changes most frequently, so put it last)
 COPY . .
 
 # Create a non-root user and set proper permissions
@@ -39,6 +40,8 @@ RUN adduser --disabled-password --gecos '' appuser && \
     chmod -R 755 /app && \
     chmod +x /app/*.py && \
     chmod +x /app/start.sh
+
+# Switch to non-root user
 USER appuser
 
 # Health check

@@ -11,7 +11,7 @@ ENV FLASK_ENV=production
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (this layer changes less frequently)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
@@ -20,26 +20,31 @@ RUN apt-get update && apt-get install -y \
     default-libmysqlclient-dev \
     pkg-config \
     python3-dev \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Copy requirements first (for better caching)
 COPY requirements.txt /app/requirements.txt
+
+# Install Python dependencies (this layer will be cached if requirements.txt doesn't change)
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir --prefer-binary -r /app/requirements.txt
 
-# Copy the web app files
+# Copy the web app files (this layer changes most frequently, so put it last)
 COPY . /app/
 
 # Make health check script executable
 RUN chmod +x /app/health_check.py
 
-# Expose port
-EXPOSE 5000
-
 # Create a non-root user
 RUN useradd --create-home --shell /bin/bash app
 RUN chown -R app:app /app
 RUN chmod +x /app/start_new.sh
+
+# Expose port
+EXPOSE 5000
+
+# Switch to non-root user
 USER app
 
 # Health check
