@@ -18,8 +18,8 @@ requests
 schedule
 
 # Export functionality
-pandas>=1.5.0
-openpyxl>=3.0.0
+pandas>=2.0.0  # Better wheel availability
+openpyxl>=3.1.0
 
 # Development dependencies (optional)
 pytest

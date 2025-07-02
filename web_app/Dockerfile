@@ -28,6 +28,7 @@ COPY requirements.txt /app/requirements.txt
 
 # Install Python dependencies (this layer will be cached if requirements.txt doesn't change)
 RUN pip install --upgrade pip && \
+    pip install --no-cache-dir --prefer-binary --only-binary=:all: -r /app/requirements.txt || \
     pip install --no-cache-dir --prefer-binary -r /app/requirements.txt
 
 # Copy the web app files (this layer changes most frequently, so put it last)

@@ -1,5 +1,8 @@
 # Use Python 3.11 slim image
-FROM python:3.11-slim
+# Install Python dependencies (this layer will be cached if requirements.txt doesn't change)
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir --prefer-binary --only-binary=:all: -r requirements.txt || \
+    pip install --no-cache-dir --prefer-binary -r requirements.txtM python:3.11-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1

@@ -39,7 +39,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./sync_app
-          platforms: linux/amd64,linux/arm/v7,linux/arm64
+          platforms: linux/amd64  # Beta: single platform for faster development builds
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
