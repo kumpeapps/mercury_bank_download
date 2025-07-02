@@ -18,10 +18,12 @@ import sys
 import uuid
 import getpass
 from datetime import datetime
+from sqlalchemy import text
 
 from models import User, MercuryAccount, Account, Transaction, SystemSetting
 from models.base import create_engine_and_session, init_db
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 
 def hash_password(password: str) -> str:
@@ -47,8 +49,17 @@ def setup_database():
     """Initialize the database with all tables."""
     print("Setting up database tables...")
     try:
+        # Create tables
         init_db()
         print("✅ Database tables created successfully!")
+        
+        # Initialize system settings
+        engine, SessionLocal = create_engine_and_session()
+        db = SessionLocal()
+        try:
+            initialize_system_settings(db)
+        finally:
+            db.close()
     except Exception as e:
         print(f"❌ Error setting up database: {e}")
         raise
@@ -263,6 +274,58 @@ def create_sample_user(db: Session, mercury_account_id: int) -> int:
     return int(user_id) if user_id else 0
 
 
+def initialize_system_settings(db: Session):
+    """Initialize default system settings if they don't exist."""
+    try:
+        # Check if users table is a view to set default signup behavior
+        try:
+            result = db.execute(text(
+                """
+                SELECT TABLE_TYPE 
+                FROM information_schema.TABLES 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'users'
+                """
+            )).fetchone()
+
+            default_signup_enabled = result[0] != "VIEW" if result else True
+        except Exception:
+            default_signup_enabled = True
+
+        # Initialize default settings
+        settings_to_create = [
+            (
+                "registration_enabled",
+                str(default_signup_enabled),
+                "Whether new user registration is enabled",
+                True,
+            ),
+            (
+                "prevent_user_deletion",
+                "false",
+                "Prevent administrators from deleting user accounts",
+                True,
+            ),
+        ]
+
+        for key, value, description, is_editable in settings_to_create:
+            existing = db.query(SystemSetting).filter_by(key=key).first()
+            if not existing:
+                setting = SystemSetting(
+                    key=key,
+                    value=value,
+                    description=description,
+                    is_editable=is_editable,
+                )
+                db.add(setting)
+
+        db.commit()
+        print("✅ System settings initialized")
+    except Exception as e:
+        print(f"❌ Warning: Could not initialize system settings: {e}")
+        db.rollback()
+
+
 def main():
     """Main setup function."""
     print("🏦 Mercury Bank Database Setup")
@@ -280,6 +343,9 @@ def main():
         if not verify_migration(db):
             print("❌ Database verification failed. Please run migration.sql first.")
             sys.exit(1)
+
+        # Initialize system settings
+        initialize_system_settings(db)
 
         print("\n🚀 Setup Options:")
         print("1. Create sample data for testing")

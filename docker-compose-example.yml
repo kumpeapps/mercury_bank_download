@@ -7,7 +7,7 @@ x-common-variables: &common-variables
 
 services:
   mercury-sync:
-    image: "justinkumpe/mercury-bank-sync:latest-beta"
+    image: "justinkumpe/mercury-bank-sync:latest"
     # Uncomment below for local development
     # build: ./sync_app
     environment: *common-variables
@@ -22,7 +22,7 @@ services:
 
   # Web application service
   web-app:
-    image: "justinkumpe/mercury-bank-sync-gui:latest-beta"
+    image: "justinkumpe/mercury-bank-sync-gui:latest"
     # Uncomment below for local development
     # build: ./web_app
     environment: *common-variables

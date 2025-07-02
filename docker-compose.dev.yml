@@ -1,0 +1,30 @@
+# Docker Compose override for local development
+# This file extends docker-compose.yml for development purposes
+# Use: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+version: '3.8'
+
+services:
+  mercury-sync:
+    build: ./sync_app
+    image: mercury-sync:dev
+    # Override the image to use local build instead of registry
+    
+  web-app:
+    build: ./web_app  
+    image: mercury-web-app:dev
+    # Override the image to use local build instead of registry
+    environment:
+      # Add development-specific environment variables
+      FLASK_ENV: development
+      FLASK_DEBUG: 1
+      # Keep externally managed users enabled
+      USERS_EXTERNALLY_MANAGED: true
+    volumes:
+      # Add volume mount for development (hot reload)
+      - ./web_app:/app
+      - ./web_app/logs:/app/logs
+      # Exclude these directories from the mount to avoid conflicts
+      - /app/__pycache__
+      - /app/models/__pycache__
+      - /app/utils/__pycache__

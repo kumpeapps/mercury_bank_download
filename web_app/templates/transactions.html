@@ -139,6 +139,7 @@
                         <th>Type</th>
                         <th class="text-end">Amount</th>
                         <th>Status</th>
+                        <th>Receipt</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -198,6 +199,11 @@
                                 {% endif %}
                             {% else %}
                                 <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if transaction.number_of_attachments > 0 %}
+                                <i class="fas fa-receipt text-primary" title="{{ transaction.number_of_attachments }} attachment(s)"></i>
                             {% endif %}
                         </td>
                     </tr>

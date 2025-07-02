@@ -52,6 +52,10 @@ else
     exit 1
 fi
 
+# Ensure super admin user is promoted (if specified)
+echo "👑 Checking super admin user..."
+python ensure_super_admin.py
+
 # Start the sync service
 echo "🔄 Starting sync service..."
 exec python sync.py

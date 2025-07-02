@@ -173,3 +173,59 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users';
 - External authentication integration (LDAP, OAuth)
 
 This implementation provides a solid foundation for user access management while maintaining security and ease of use.
+
+## Admin User Management
+
+### First User Auto-Admin
+
+Starting with this update, the **first user to register** in the system is **automatically granted admin privileges**. This ensures that there's always at least one admin user who can manage the system.
+
+#### How It Works
+
+1. When a user registers, the system checks if they are the first user (user count = 0)
+2. If they are the first user, their `UserSettings.is_admin` field is automatically set to `True`
+3. The registration confirmation message indicates when admin privileges have been granted
+
+### Managing Admin Users
+
+#### Using Command Line Tools
+
+Several command-line utilities are provided for admin user management:
+
+**Create First Admin User** (if no users exist):
+```bash
+# Using the development helper
+./dev.sh create-admin
+
+# Or directly in the container
+docker-compose exec web-app python admin_user.py create
+```
+
+**Promote Existing User to Admin:**
+```bash
+./dev.sh promote-admin <username>
+```
+
+**List All Admin Users:**
+```bash
+./dev.sh list-admin
+```
+
+**Ensure First User is Admin (Migration):**
+```bash
+./dev.sh ensure-admin
+```
+
+This migration script will:
+1. Check if any admin users exist
+2. If no admin users exist, promote the first user (oldest by ID) to admin
+3. Create UserSettings if needed
+
+### Admin User Scripts
+
+**admin_user.py** - Comprehensive admin user management:
+- `create` - Create first admin user
+- `promote <username>` - Promote user to admin
+- `list` - List all admin users
+
+**ensure_first_admin.py** - Migration utility to ensure at least one admin exists

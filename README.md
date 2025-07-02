@@ -113,6 +113,56 @@ cd web_app
 docker-compose up -d
 ```
 
+### Local Development with MySQL
+
+For local development and testing, use the included MySQL database:
+
+```bash
+# Start all services with local MySQL
+./dev.sh start
+
+# Or start in development mode (with local builds and hot reload)
+./dev.sh start-dev
+
+# View logs
+./dev.sh logs
+
+# Access the applications:
+# - Web Interface: http://localhost:5001
+# - Database Admin (Adminer): http://localhost:8080
+# - MySQL: localhost:3306
+```
+
+### Development Helper Script
+
+The `dev.sh` script provides convenient commands for local development:
+
+```bash
+./dev.sh start          # Start all services
+./dev.sh start-dev      # Start with development builds
+./dev.sh stop           # Stop all services
+./dev.sh logs           # View all logs
+./dev.sh build          # Build local images
+./dev.sh clean          # Clean up containers and volumes
+./dev.sh migrate        # Run database migrations
+./dev.sh encrypt-keys   # Encrypt existing API keys
+./dev.sh test-encrypt   # Test encryption functionality
+./dev.sh shell-sync     # Open shell in sync container
+./dev.sh shell-web      # Open shell in web container
+./dev.sh shell-db       # Open MySQL shell
+```
+
+### Database Configuration
+
+**Local Development** (default):
+- Database: `mysql://mercury_user:mercury_password@localhost:3306/mercury_db`
+- MySQL runs in Docker container
+- Data persisted in Docker volume `mysql_data`
+
+**Production**:
+- Configure `DATABASE_URL` in `docker-compose.yml`
+- Update credentials and connection details as needed
+
 ## 📋 Configuration
 
 ### Environment Variables

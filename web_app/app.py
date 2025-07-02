@@ -51,6 +51,99 @@ DATABASE_URL = os.environ.get(
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
 
+
+# Define system settings initialization function
+def initialize_system_settings():
+    """Initialize default system settings if they don't exist."""
+    db_session = Session()
+    try:
+        # Check if users are externally managed
+        users_externally_managed = (
+            os.environ.get("USERS_EXTERNALLY_MANAGED", "false").lower() == "true"
+        )
+
+        print(
+            f"🔒 USERS_EXTERNALLY_MANAGED environment variable is set to: {users_externally_managed}"
+        )
+
+        # Check if users table is a view to set default signup behavior
+        try:
+            result = db_session.execute(
+                text(
+                    """
+                SELECT TABLE_TYPE 
+                FROM information_schema.TABLES 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'users'
+            """
+                )
+            ).fetchone()
+
+            default_signup_enabled = result[0] != "VIEW" if result else True
+        except Exception:
+            default_signup_enabled = True
+
+        # If users are externally managed, override these settings
+        if users_externally_managed:
+            print("🔒 Users are externally managed - locking user management settings")
+            default_signup_enabled = False
+            prevent_deletion = True
+            settings_editable = False
+        else:
+            prevent_deletion = False
+            settings_editable = True
+
+        # Initialize default settings
+        settings_to_create = [
+            (
+                "registration_enabled",
+                str(default_signup_enabled).lower(),
+                "Whether new user registration is enabled",
+                settings_editable,
+            ),
+            (
+                "prevent_user_deletion",
+                str(prevent_deletion).lower(),
+                "Prevent administrators from deleting user accounts",
+                settings_editable,
+            ),
+            (
+                "users_externally_managed",
+                str(users_externally_managed).lower(),
+                "Users are managed by an external system (locks user management settings)",
+                False,  # This setting itself is never editable via UI
+            ),
+        ]
+
+        for key, value, description, is_editable in settings_to_create:
+            existing = db_session.query(SystemSetting).filter_by(key=key).first()
+            if not existing:
+                setting = SystemSetting(
+                    key=key,
+                    value=value,
+                    description=description,
+                    is_editable=is_editable,
+                )
+                db_session.add(setting)
+                print(f"✅ Created system setting: {key} = {value}")
+            elif key == "users_externally_managed":
+                # Always update the external management setting to match environment variable
+                existing.value = value
+                print(f"✅ Updated users_externally_managed setting to: {value}")
+            elif users_externally_managed:
+                # When users are externally managed, update all settings
+                existing.value = value
+                existing.is_editable = is_editable
+                print(f"✅ Updated setting due to external management: {key} = {value}")
+
+        db_session.commit()
+    except Exception as e:
+        print(f"Warning: Could not initialize system settings: {e}")
+        db_session.rollback()
+    finally:
+        db_session.close()
+
+
 # Initialize database tables
 print(f"🔧 Initializing database with URL: {DATABASE_URL}")
 
@@ -92,6 +185,10 @@ try:
             print("✅ system_settings table verified")
         else:
             print("❌ system_settings table not found")
+
+    # Initialize system settings
+    initialize_system_settings()
+    print("✅ System settings initialized")
 
 except Exception as e:
     print(f"⚠️  Warning: Could not initialize database tables: {e}")
@@ -166,8 +263,21 @@ def check_user_account_access(user_in_session, account_id, db_session):
 # Helper functions
 def is_signup_enabled():
     """Check if user registration is enabled."""
+    # First check environment variable directly to ensure we honor it
+    users_externally_managed = (
+        os.environ.get("USERS_EXTERNALLY_MANAGED", "false").lower() == "true"
+    )
+    if users_externally_managed:
+        return False
+
     db_session = Session()
     try:
+        # Also check system setting for externally managed users
+        if SystemSetting.get_bool_value(
+            db_session, "users_externally_managed", default=False
+        ):
+            return False
+
         # Check if users table is a view (MySQL specific check)
         result = db_session.execute(
             text(
@@ -185,60 +295,12 @@ def is_signup_enabled():
             return False
 
         # Check system setting for signup control
-        return SystemSetting.get_bool_value(db_session, "signup_enabled", default=True)
+        return SystemSetting.get_bool_value(
+            db_session, "registration_enabled", default=True
+        )
     except Exception:
         # Default to enabled if we can't check (for backwards compatibility)
         return True
-    finally:
-        db_session.close()
-
-
-def initialize_system_settings():
-    """Initialize default system settings if they don't exist."""
-    db_session = Session()
-    try:
-        # Check if users table is a view to set default signup behavior
-        try:
-            result = db_session.execute(
-                text(
-                    """
-                SELECT TABLE_TYPE 
-                FROM information_schema.TABLES 
-                WHERE TABLE_SCHEMA = DATABASE() 
-                AND TABLE_NAME = 'users'
-            """
-                )
-            ).fetchone()
-
-            default_signup_enabled = result[0] != "VIEW" if result else True
-        except Exception:
-            default_signup_enabled = True
-
-        # Initialize default settings
-        settings_to_create = [
-            (
-                "signup_enabled",
-                str(default_signup_enabled),
-                "Whether new user registration is enabled",
-                True,
-            ),
-        ]
-
-        for key, value, description, is_editable in settings_to_create:
-            existing = db_session.query(SystemSetting).filter_by(key=key).first()
-            if not existing:
-                setting = SystemSetting(
-                    key=key,
-                    value=value,
-                    description=description,
-                    is_editable=is_editable,
-                )
-                db_session.add(setting)
-
-        db_session.commit()
-    except Exception as e:
-        print(f"Warning: Could not initialize system settings: {e}")
-        db_session.rollback()
     finally:
         db_session.close()
 
@@ -316,6 +378,8 @@ def export_transactions(transactions, format_type, accounts):
                     if transaction.created_at
                     else ""
                 ),
+                "Has Attachments": "Yes" if transaction.number_of_attachments > 0 else "No",
+                "Number of Attachments": transaction.number_of_attachments,
             }
         )
 
@@ -526,15 +590,49 @@ def login():
         finally:
             db_session.close()
 
-    return render_template("login.html", signup_enabled=is_signup_enabled())
+    # Check if users are externally managed (directly from env var)
+    users_externally_managed = (
+        os.environ.get("USERS_EXTERNALLY_MANAGED", "false").lower() == "true"
+    )
+
+    return render_template(
+        "login.html",
+        signup_enabled=is_signup_enabled(),
+        users_externally_managed=users_externally_managed,
+    )
 
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    # Check if registration is enabled
+    # First check environment variable directly
+    users_externally_managed = (
+        os.environ.get("USERS_EXTERNALLY_MANAGED", "false").lower() == "true"
+    )
+    if users_externally_managed:
+        flash(
+            "User registration is disabled because users are externally managed.",
+            "error",
+        )
+        return redirect(url_for("login"))
+
+    # Check if registration is enabled via function (which checks both env var and DB settings)
     if not is_signup_enabled():
         flash("User registration is currently disabled.", "error")
         return redirect(url_for("login"))
+
+    # Double-check if users are externally managed (for security)
+    db_session = Session()
+    try:
+        if SystemSetting.get_bool_value(
+            db_session, "users_externally_managed", default=False
+        ):
+            flash(
+                "User registration is disabled because users are externally managed.",
+                "error",
+            )
+            return redirect(url_for("login"))
+    finally:
+        db_session.close()
 
     if request.method == "POST":
         username = request.form["username"]
@@ -549,13 +647,30 @@ def register():
                 flash("Username already exists", "error")
                 return render_template("register.html")
 
+            # Check if this is the first user (should be admin)
+            user_count = db_session.query(User).count()
+            is_first_user = user_count == 0
+
             # Create new user
             new_user = User(username=username, email=email)
             new_user.set_password(password)
             db_session.add(new_user)
+            db_session.flush()  # Flush to get the user ID
+
+            # Create user settings and set admin status for first user
+            from models.user_settings import UserSettings
+
+            user_settings = UserSettings(user_id=new_user.id, is_admin=is_first_user)
+            db_session.add(user_settings)
             db_session.commit()
 
-            flash("Registration successful! Please log in.", "success")
+            if is_first_user:
+                flash(
+                    "Registration successful! You have been granted admin privileges as the first user. Please log in.",
+                    "success",
+                )
+            else:
+                flash("Registration successful! Please log in.", "success")
             return redirect(url_for("login"))
         finally:
             db_session.close()
@@ -1515,7 +1630,20 @@ def admin_settings():
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
+        # Check if users are externally managed
+        users_externally_managed = SystemSetting.get_bool_value(
+            db_session, "users_externally_managed", default=False
+        )
+
         if request.method == "POST":
+            # Block setting changes if users are externally managed
+            if users_externally_managed:
+                flash(
+                    "Settings cannot be changed because users are externally managed.",
+                    "error",
+                )
+                return redirect(url_for("admin_settings"))
+
             # Update settings
             for key, value in request.form.items():
                 if key.startswith("setting_"):
@@ -1535,7 +1663,11 @@ def admin_settings():
         # Get all editable settings
         settings = db_session.query(SystemSetting).filter_by(is_editable=True).all()
 
-        return render_template("admin_settings.html", settings=settings)
+        return render_template(
+            "admin_settings.html",
+            settings=settings,
+            users_externally_managed=users_externally_managed,
+        )
     finally:
         db_session.close()
 
@@ -1688,44 +1820,298 @@ def manage_mercury_access(mercury_account_id):
         db_session.close()
 
 
-@app.route("/edit_account/<account_id>", methods=["GET", "POST"])
+@app.route("/admin/users", methods=["GET"])
 @login_required
-def edit_account(account_id):
+def admin_users():
+    """Admin page for managing users."""
     db_session = Session()
     try:
-        # Get the account and ensure user has access via Mercury account
-        account = db_session.query(Account).filter(Account.id == account_id).first()
+        # Get current user in session to avoid DetachedInstanceError
+        user_in_session = get_current_user_in_session(db_session)
+        if not user_in_session:
+            flash("User session expired. Please log in again.", "error")
+            return redirect(url_for("login"))
 
-        if not account:
-            flash("Account not found.", "error")
-            return redirect(url_for("accounts"))
+        # Check if user is admin
+        if not user_in_session.is_admin:
+            flash("Access denied. Admin privileges required.", "error")
+            return redirect(url_for("dashboard"))
 
-        # Check if user has access to this account via Mercury account
-        mercury_account = (
-            db_session.query(MercuryAccount)
-            .filter(
-                MercuryAccount.id == account.mercury_account_id,
-                MercuryAccount.users.contains(current_user),
-            )
-            .first()
+        # Get all users
+        all_users = db_session.query(User).all()
+
+        # Get admin users
+        admin_users = [user for user in all_users if user.is_admin]
+
+        # Get user deletion prevention setting
+        prevent_user_deletion = SystemSetting.get_bool_value(
+            db_session, "prevent_user_deletion", default=False
         )
 
-        if not mercury_account:
-            flash("Access denied to this account.", "error")
-            return redirect(url_for("accounts"))
-
-        if request.method == "POST":
-            # Update account nickname
-            account.nickname = request.form.get("nickname", "").strip() or None
-            db_session.commit()
-            flash("Account updated successfully!", "success")
-            return redirect(url_for("accounts"))
+        # Check if users are externally managed
+        users_externally_managed = SystemSetting.get_bool_value(
+            db_session, "users_externally_managed", default=False
+        )
 
         return render_template(
-            "edit_account.html", account=account, mercury_account=mercury_account
+            "admin_users.html",
+            all_users=all_users,
+            admin_users=admin_users,
+            prevent_user_deletion=prevent_user_deletion,
+            users_externally_managed=users_externally_managed,
         )
     finally:
         db_session.close()
+
+
+@app.route("/admin/users/add", methods=["GET"])
+@login_required
+def add_user_form():
+    """Display form to add a new user."""
+    db_session = Session()
+    try:
+        # Get current user in session to avoid DetachedInstanceError
+        user_in_session = get_current_user_in_session(db_session)
+        if not user_in_session:
+            flash("User session expired. Please log in again.", "error")
+            return redirect(url_for("login"))
+
+        # Check if user is admin
+        if not user_in_session.is_admin:
+            flash("Access denied. Admin privileges required.", "error")
+            return redirect(url_for("dashboard"))
+
+        return render_template("add_user.html")
+    finally:
+        db_session.close()
+
+
+@app.route("/admin/users/add", methods=["POST"])
+@login_required
+def add_user_submit():
+    """Process form submission to add a new user."""
+    db_session = Session()
+    try:
+        # Get current user in session to avoid DetachedInstanceError
+        user_in_session = get_current_user_in_session(db_session)
+        if not user_in_session:
+            flash("User session expired. Please log in again.", "error")
+            return redirect(url_for("login"))
+
+        # Check if user is admin
+        if not user_in_session.is_admin:
+            flash("Access denied. Admin privileges required.", "error")
+            return redirect(url_for("dashboard"))
+
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        is_admin = request.form.get("is_admin") == "true"
+
+        # Validate inputs
+        if not username or not email or not password:
+            flash("All fields are required.", "error")
+            return redirect(url_for("add_user_form"))
+
+        if password != confirm_password:
+            flash("Passwords do not match.", "error")
+            return redirect(url_for("add_user_form"))
+
+        # Check if user already exists
+        existing_user = (
+            db_session.query(User)
+            .filter((User.username == username) | (User.email == email))
+            .first()
+        )
+
+        if existing_user:
+            flash("A user with that username or email already exists.", "error")
+            return redirect(url_for("add_user_form"))
+
+        # Create new user
+        new_user = User(username=username, email=email)
+        new_user.set_password(password)
+        db_session.add(new_user)
+        db_session.flush()  # Get the user ID
+
+        # Create user settings
+        user_settings = UserSettings(user_id=new_user.id, is_admin=is_admin)
+        db_session.add(user_settings)
+        db_session.commit()
+
+        flash(f"User '{username}' created successfully!", "success")
+        return redirect(url_for("admin_users"))
+    except Exception as e:
+        db_session.rollback()
+        flash(f"Error creating user: {str(e)}", "error")
+        return redirect(url_for("add_user_form"))
+    finally:
+        db_session.close()
+
+
+@app.route("/admin/users/<int:user_id>/promote", methods=["POST"])
+@login_required
+def promote_to_admin(user_id):
+    """Promote a user to admin status."""
+    db_session = Session()
+    try:
+        # Get current user in session to avoid DetachedInstanceError
+        user_in_session = get_current_user_in_session(db_session)
+        if not user_in_session:
+            flash("User session expired. Please log in again.", "error")
+            return redirect(url_for("login"))
+
+        # Check if user is admin
+        if not user_in_session.is_admin:
+            flash("Access denied. Admin privileges required.", "error")
+            return redirect(url_for("dashboard"))
+
+        # Get the user to promote
+        user = db_session.query(User).get(user_id)
+        if not user:
+            flash("User not found.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Promote user to admin
+        if not user.settings:
+            user_settings = UserSettings(user_id=user.id, is_admin=True)
+            db_session.add(user_settings)
+        else:
+            user.settings.is_admin = True
+
+        db_session.commit()
+        flash(f"User '{user.username}' has been promoted to admin!", "success")
+    except Exception as e:
+        db_session.rollback()
+        flash(f"Error promoting user: {str(e)}", "error")
+
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<int:user_id>/demote", methods=["POST"])
+@login_required
+def demote_admin(user_id):
+    """Remove admin privileges from a user."""
+    db_session = Session()
+    try:
+        # Get current user in session to avoid DetachedInstanceError
+        user_in_session = get_current_user_in_session(db_session)
+        if not user_in_session:
+            flash("User session expired. Please log in again.", "error")
+            return redirect(url_for("login"))
+
+        # Check if user is admin
+        if not user_in_session.is_admin:
+            flash("Access denied. Admin privileges required.", "error")
+            return redirect(url_for("dashboard"))
+
+        # Get the user to demote
+        user = db_session.query(User).get(user_id)
+        if not user:
+            flash("User not found.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Check if trying to demote self
+        if user.id == user_in_session.id:
+            flash("You cannot remove your own admin privileges.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Check if this is the last admin
+        admin_count = (
+            db_session.query(User)
+            .join(UserSettings)
+            .filter(UserSettings.is_admin == True)
+            .count()
+        )
+        if admin_count <= 1:
+            flash("Cannot remove the last admin user.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Demote user
+        if user.settings:
+            user.settings.is_admin = False
+            db_session.commit()
+            flash(f"Admin privileges removed from user '{user.username}'.", "success")
+        else:
+            flash("User has no settings record.", "error")
+    except Exception as e:
+        db_session.rollback()
+        flash(f"Error demoting user: {str(e)}", "error")
+
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
+@login_required
+def delete_user_by_id(user_id):
+    """Delete a user from the system."""
+    db_session = Session()
+    try:
+        # Get current user in session to avoid DetachedInstanceError
+        user_in_session = get_current_user_in_session(db_session)
+        if not user_in_session:
+            flash("User session expired. Please log in again.", "error")
+            return redirect(url_for("login"))
+
+        # Check if user is admin
+        if not user_in_session.is_admin:
+            flash("Access denied. Admin privileges required.", "error")
+            return redirect(url_for("dashboard"))
+
+        # Check if users are externally managed - if yes, always prevent deletion
+        if SystemSetting.get_bool_value(
+            db_session, "users_externally_managed", default=False
+        ):
+            flash(
+                "User deletion is disabled because users are externally managed.",
+                "error",
+            )
+            return redirect(url_for("admin_users"))
+
+        # Check if user deletion is prevented by system settings
+        if SystemSetting.get_bool_value(
+            db_session, "prevent_user_deletion", default=False
+        ):
+            flash("User deletion is disabled by system settings.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Get the user to delete
+        user = db_session.query(User).get(user_id)
+        if not user:
+            flash("User not found.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Check if trying to delete self
+        if user.id == user_in_session.id:
+            flash("You cannot delete your own account.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Check if user is an admin
+        if user.is_admin:
+            # Check if this is the last admin
+            admin_count = (
+                db_session.query(User)
+                .join(UserSettings)
+                .filter(UserSettings.is_admin == True)
+                .count()
+            )
+            if admin_count <= 1:
+                flash("Cannot delete the last admin user.", "error")
+                return redirect(url_for("admin_users"))
+
+        # Remember username for the success message
+        username = user.username
+
+        # Delete the user
+        db_session.delete(user)
+        db_session.commit()
+        flash(f"User '{username}' deleted successfully.", "success")
+    except Exception as e:
+        db_session.rollback()
+        flash(f"Error deleting user: {str(e)}", "error")
+
+    return redirect(url_for("admin_users"))
 
 
 @app.route("/health")

@@ -1,6 +1,10 @@
 from sqlalchemy import Column, String, DateTime, Boolean, Text, text, Integer
-from sqlalchemy.orm import relationship, foreign
+from sqlalchemy.orm import relationship
 from .base import Base, user_mercury_account_association
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.encryption import encrypt_api_key, decrypt_api_key
 
 
 class MercuryAccount(Base):
@@ -18,7 +22,7 @@ class MercuryAccount(Base):
     Attributes:
         id (str): Primary key - unique identifier for the account group
         name (str): Descriptive name for this account group
-        api_key (str): Mercury Bank API key for accessing the accounts
+        api_key (str): Mercury Bank API key for accessing the accounts - encrypted at rest
         sandbox_mode (bool): Whether to use Mercury's sandbox environment
         description (str, optional): Additional description or notes
         is_active (bool): Whether this account group should be synced
@@ -37,9 +41,46 @@ class MercuryAccount(Base):
     id = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
     name = Column(String(255), nullable=False)
 
-    # API configuration
-    api_key = Column(String(500), nullable=False)  # Mercury API keys can be long
+    # API configuration - encrypted storage
+    _api_key_encrypted = Column("api_key", String(500), nullable=False)
     sandbox_mode = Column(Boolean, default=False)
+
+    @property
+    def api_key(self):
+        """
+        Get the decrypted API key.
+        
+        Returns:
+            str: Decrypted API key
+        """
+        if not self._api_key_encrypted:
+            return None
+        try:
+            return decrypt_api_key(self._api_key_encrypted)
+        except ValueError:
+            # If decryption fails, assume it's a legacy unencrypted key
+            # This allows for graceful migration from unencrypted to encrypted storage
+            return self._api_key_encrypted
+    
+    @api_key.setter
+    def api_key(self, value):
+        """
+        Set the API key (will be encrypted before storage).
+        
+        Args:
+            value (str): Plain text API key to encrypt and store
+        """
+        if value is None:
+            self._api_key_encrypted = None
+        else:
+            # Check if the value is already encrypted (for migration scenarios)
+            try:
+                # Try to decrypt it first - if it works, it's already encrypted
+                decrypt_api_key(value)
+                self._api_key_encrypted = value
+            except ValueError:
+                # If decryption fails, it's a plain text key that needs encryption
+                self._api_key_encrypted = encrypt_api_key(value)
 
     # Description and metadata
     description = Column(Text, nullable=True)
@@ -86,8 +127,27 @@ class MercuryAccount(Base):
         Returns:
             str: API key with most characters replaced by asterisks
         """
-        if not self.api_key:
+        api_key = self.api_key  # This will decrypt the key
+        if not api_key:
             return "No API key"
-        if len(self.api_key) <= 8:
-            return "*" * len(self.api_key)
-        return self.api_key[:4] + "*" * (len(self.api_key) - 8) + self.api_key[-4:]
+        if len(api_key) <= 8:
+            return "*" * len(api_key)
+        return api_key[:4] + "*" * (len(api_key) - 8) + api_key[-4:]
+
+    def get_decrypted_api_key(self):
+        """
+        Explicit method to get decrypted API key for use in sync operations.
+        
+        Returns:
+            str: Decrypted API key
+        """
+        return self.api_key
+
+    def set_api_key(self, api_key):
+        """
+        Explicit method to set and encrypt API key.
+        
+        Args:
+            api_key (str): Plain text API key to encrypt and store
+        """
+        self.api_key = api_key

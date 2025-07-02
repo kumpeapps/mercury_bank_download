@@ -52,6 +52,10 @@ else
     exit 1
 fi
 
+# Ensure super admin user is promoted (if specified)
+echo "👑 Checking super admin user..."
+python ensure_super_admin.py
+
 # Start the Flask application
 echo "🌐 Starting Flask application..."
 exec python app.py
