@@ -1728,6 +1728,19 @@ def edit_account(account_id):
         db_session.close()
 
 
+@app.route("/health")
+def health_check():
+    """Health check endpoint for Docker and monitoring systems."""
+    try:
+        # Test database connection
+        db_session = Session()
+        db_session.execute(text("SELECT 1"))
+        db_session.close()
+        return jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat()}), 200
+    except Exception as e:
+        return jsonify({"status": "unhealthy", "error": str(e), "timestamp": datetime.utcnow().isoformat()}), 503
+
+
 def get_available_months(db_session, account_ids):
     """Get available months from transactions data"""
     from sqlalchemy import distinct, extract, func
