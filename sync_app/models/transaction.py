@@ -11,6 +11,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from .base import Base
+from .transaction_attachment import TransactionAttachment  # Import TransactionAttachment model
 
 
 class Transaction(Base):
@@ -55,6 +56,7 @@ class Transaction(Base):
         number_of_attachments (int): Number of attachments associated with transaction
         
         account (Account): Related Account object
+        attachments (list): List of related TransactionAttachment objects
     """
     __tablename__ = "transactions"
 
@@ -109,6 +111,9 @@ class Transaction(Base):
 
     # Relationship to account
     account = relationship("Account", back_populates="transactions")
+
+    # Relationship to transaction attachments
+    attachments = relationship("TransactionAttachment", back_populates="transaction", cascade="all, delete-orphan")
 
     def __repr__(self):
         """

@@ -107,8 +107,9 @@ class Transaction(Base):
     has_generated_receipt = Column(Boolean, default=False)
     number_of_attachments = Column(Integer, default=0)
 
-    # Relationship to account
+    # Relationships
     account = relationship("Account", back_populates="transactions")
+    attachments = relationship("TransactionAttachment", back_populates="transaction", cascade="all, delete-orphan")
 
     def __repr__(self):
         """

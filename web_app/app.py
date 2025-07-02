@@ -30,6 +30,7 @@ import os
 import json
 import csv
 import io
+import logging
 from collections import defaultdict
 
 # Import models
@@ -38,11 +39,16 @@ from models.user_settings import UserSettings
 from models.mercury_account import MercuryAccount
 from models.account import Account
 from models.transaction import Transaction
+from models.transaction_attachment import TransactionAttachment
 from models.system_setting import SystemSetting
 from models.base import Base
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "your-secret-key-change-this")
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Database configuration
 DATABASE_URL = os.environ.get(
@@ -349,6 +355,21 @@ def export_transactions(transactions, format_type, accounts):
     for transaction in transactions:
         account = account_lookup.get(transaction.account_id)
         effective_date = transaction.posted_at or transaction.created_at
+        
+        # Get receipt status if account is available
+        receipt_status = ""
+        if account:
+            status = account.get_receipt_status_for_transaction(
+                transaction.amount, 
+                transaction.number_of_attachments > 0
+            )
+            receipt_status_map = {
+                "required_present": "Required (Present)",
+                "required_missing": "Required (Missing)",
+                "optional_present": "Optional (Present)",
+                "optional_missing": "Optional (Not Present)"
+            }
+            receipt_status = receipt_status_map.get(status, "Unknown")
 
         data.append(
             {
@@ -380,6 +401,7 @@ def export_transactions(transactions, format_type, accounts):
                 ),
                 "Has Attachments": "Yes" if transaction.number_of_attachments > 0 else "No",
                 "Number of Attachments": transaction.number_of_attachments,
+                "Receipt Status": receipt_status,
             }
         )
 
@@ -2302,6 +2324,122 @@ def get_current_user_in_session(db_session):
     if not current_user.is_authenticated:
         return None
     return db_session.query(User).get(current_user.id)
+
+
+@app.route("/edit_account/<account_id>", methods=["GET", "POST"])
+@login_required
+def edit_account(account_id):
+    db_session = Session()
+    try:
+        user = get_current_user_in_session(db_session)
+        if not user:
+            flash("User not found", "error")
+            return redirect(url_for("login"))
+
+        # Get accessible accounts for this user (respects account restrictions)
+        accessible_accounts = get_user_accessible_accounts(user, db_session)
+        
+        # Find the specific account
+        account = None
+        for acc in accessible_accounts:
+            if acc.id == account_id:
+                account = acc
+                break
+        
+        if not account:
+            flash("Account not found or access denied.", "error")
+            return redirect(url_for("accounts"))
+
+        # Get the mercury account for display
+        mercury_account = db_session.query(MercuryAccount).filter_by(id=account.mercury_account_id).first()
+
+        if request.method == "POST":
+            # Update account fields
+            account.nickname = request.form.get("nickname", "").strip() or None
+            account.receipt_required = request.form.get("receipt_required", "none")
+            
+            # Handle receipt threshold
+            threshold_str = request.form.get("receipt_threshold", "").strip()
+            if account.receipt_required == "threshold" and threshold_str:
+                try:
+                    account.receipt_threshold = float(threshold_str)
+                except ValueError:
+                    flash("Invalid receipt threshold amount.", "error")
+                    return render_template("edit_account.html", account=account, mercury_account=mercury_account)
+            else:
+                account.receipt_threshold = None
+
+            db_session.commit()
+            flash("Account updated successfully!", "success")
+            return redirect(url_for("accounts"))
+
+        return render_template("edit_account.html", account=account, mercury_account=mercury_account)
+    finally:
+        db_session.close()
+
+
+@app.route('/api/transaction/<string:transaction_id>/attachments')
+@login_required
+def get_transaction_attachments(transaction_id):
+    """Get attachments for a specific transaction."""
+    try:
+        db_session = Session()
+        
+        # Get the current user from the session to avoid DetachedInstanceError
+        user = get_current_user_in_session(db_session)
+        if not user:
+            return jsonify({'error': 'User not found'}), 401
+        
+        # Get the transaction first
+        transaction = db_session.query(Transaction).filter(Transaction.id == transaction_id).first()
+        if not transaction:
+            return jsonify({'error': 'Transaction not found'}), 404
+        
+        # Check if user has access to this transaction's account
+        user_accounts = get_user_accessible_accounts(user, db_session)
+        account_ids = [acc.id for acc in user_accounts]
+        
+        if transaction.account_id not in account_ids:
+            return jsonify({'error': 'Access denied'}), 403
+        
+        # Get attachments for the transaction
+        attachments = db_session.query(TransactionAttachment).filter(
+            TransactionAttachment.transaction_id == transaction_id
+        ).all()
+        
+        # Convert to JSON format
+        attachments_data = []
+        for attachment in attachments:
+            attachments_data.append({
+                'id': attachment.id,
+                'filename': attachment.filename,
+                'content_type': attachment.content_type,
+                'file_size': attachment.file_size,
+                'file_size_formatted': attachment.file_size_formatted,
+                'description': attachment.description,
+                'mercury_url': attachment.mercury_url,
+                'thumbnail_url': attachment.thumbnail_url,
+                'upload_date': attachment.upload_date.isoformat() if attachment.upload_date else None,
+                'url_expires_at': attachment.url_expires_at.isoformat() if attachment.url_expires_at else None,
+                'is_url_expired': attachment.is_url_expired,
+                'is_image': attachment.is_image,
+                'is_pdf': attachment.is_pdf,
+                'file_extension': attachment.file_extension,
+                'created_at': attachment.created_at.isoformat() if attachment.created_at else None,
+            })
+        
+        return jsonify({
+            'transaction_id': transaction_id,
+            'attachments': attachments_data,
+            'count': len(attachments_data)
+        })
+        
+    except Exception as e:
+        logger.error("Error fetching transaction attachments: %s", e)
+        return jsonify({'error': 'Internal server error'}), 500
+    finally:
+        if 'db_session' in locals():
+            db_session.close()
 
 
 # Initialize settings on app startup

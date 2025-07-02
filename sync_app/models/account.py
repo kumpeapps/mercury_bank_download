@@ -35,6 +35,8 @@ class Account(Base):
         kind (str, optional): Mercury-specific account kind/category
         nickname (str, optional): User-defined account nickname
         legal_business_name (str, optional): Legal business name associated with account
+        receipt_required (str): Receipt requirement setting - 'none', 'always', or 'threshold'
+        receipt_threshold (float, optional): Dollar amount threshold for receipt requirement
         is_active (bool): Whether the account is active, defaults to True
         created_at (datetime): Timestamp when record was created
         updated_at (datetime): Timestamp when record was last updated
@@ -65,6 +67,10 @@ class Account(Base):
     nickname = Column(String(255), nullable=True)  # Account nickname
     legal_business_name = Column(String(255), nullable=True)  # Legal business name
 
+    # Receipt requirement settings
+    receipt_required = Column(String(20), default="none")  # "none", "always", "threshold"
+    receipt_threshold = Column(Float, nullable=True)  # Dollar amount threshold for receipt requirement
+
     # System fields
     is_active = Column(Boolean, default=True)
     created_at = Column(
@@ -81,6 +87,47 @@ class Account(Base):
 
     # Relationship to mercury account group
     mercury_account = relationship("MercuryAccount", back_populates="accounts")
+
+    def is_receipt_required_for_amount(self, amount):
+        """
+        Check if a receipt is required for a given transaction amount.
+
+        Args:
+            amount (float): Transaction amount to check
+
+        Returns:
+            bool: True if receipt is required, False otherwise
+        """
+        if self.receipt_required == "none":
+            return False
+        elif self.receipt_required == "always":
+            return True
+        elif self.receipt_required == "threshold":
+            return self.receipt_threshold is not None and abs(amount) >= self.receipt_threshold
+        return False
+
+    def get_receipt_status_for_transaction(self, amount, has_attachments):
+        """
+        Get the receipt status for display purposes.
+
+        Args:
+            amount (float): Transaction amount
+            has_attachments (bool): Whether transaction has attachments
+
+        Returns:
+            str: Status - 'required_present' (green), 'required_missing' (red),
+                 'optional_present' (blue), 'optional_missing' (blank)
+        """
+        required = self.is_receipt_required_for_amount(amount)
+
+        if required and has_attachments:
+            return "required_present"  # Green
+        elif required and not has_attachments:
+            return "required_missing"  # Red
+        elif not required and has_attachments:
+            return "optional_present"  # Blue
+        else:
+            return "optional_missing"  # Blank
 
     def __repr__(self):
         """

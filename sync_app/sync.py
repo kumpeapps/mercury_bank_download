@@ -20,6 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import models  # This imports all models through __init__.py
 from models.account import Account
 from models.transaction import Transaction
+from models.transaction_attachment import TransactionAttachment
 from models.mercury_account import MercuryAccount
 from models.user import User
 from models.user_settings import UserSettings
@@ -657,6 +658,66 @@ class MercuryBankSyncer:
                                     "Created new transaction: %s", transaction_id
                                 )
 
+                            # Sync attachments if the transaction has any
+                            try:
+                                # Check if transaction has attachments by looking at the attachments field
+                                attachments_list = self._safe_get(transaction_data, "attachments")
+                                transaction_has_attachments = bool(attachments_list and len(attachments_list) > 0)
+                                
+                                # Debug: Log attachment information for all transactions
+                                num_attachments = len(attachments_list) if attachments_list else 0
+                                
+                                # Get all attributes/keys for debugging
+                                if isinstance(transaction_data, dict):
+                                    data_keys = list(transaction_data.keys())
+                                elif hasattr(transaction_data, '__dict__'):
+                                    data_keys = list(vars(transaction_data).keys())
+                                else:
+                                    data_keys = [attr for attr in dir(transaction_data) if not attr.startswith('_')]
+                                
+                                logger.info(
+                                    "Transaction %s has %s attachments. Transaction data attributes: %s",
+                                    transaction_id,
+                                    num_attachments,
+                                    data_keys[:20]  # Limit to first 20 to avoid spam
+                                )
+                                
+                                # Check if there's any attachment data in the transaction
+                                attachment_fields = []
+                                if isinstance(transaction_data, dict):
+                                    for key, value in transaction_data.items():
+                                        if 'attach' in key.lower():
+                                            attachment_fields.append(f"{key}: {value}")
+                                else:
+                                    # Check object attributes
+                                    for attr in dir(transaction_data):
+                                        if not attr.startswith('_') and 'attach' in attr.lower():
+                                            try:
+                                                value = getattr(transaction_data, attr)
+                                                attachment_fields.append(f"{attr}: {value}")
+                                            except Exception:
+                                                pass
+                                
+                                if attachment_fields:
+                                    logger.info("Found attachment fields: %s", attachment_fields)
+                                
+                                if transaction_has_attachments:
+                                    attachment_count = self.sync_transaction_attachments(
+                                        transaction_id, transaction_data, db
+                                    )
+                                    logger.info(
+                                        "Synced %d attachments for transaction %s",
+                                        attachment_count,
+                                        transaction_id,
+                                    )
+                            except Exception as attachment_error:
+                                logger.warning(
+                                    "Failed to sync attachments for transaction %s: %s",
+                                    transaction_id,
+                                    attachment_error,
+                                )
+                                # Continue processing other transactions even if attachment sync fails
+
                             account_synced += 1
 
                         logger.info(
@@ -691,6 +752,217 @@ class MercuryBankSyncer:
 
         except Exception as e:
             logger.error("Failed to sync transactions: %s", e)
+            raise
+
+    def sync_transaction_attachments(self, transaction_id: str, transaction_data, db_session) -> int:
+        """
+        Sync attachments for a specific transaction from transaction data.
+
+        Extracts attachment metadata from the transaction data and synchronizes with the local database.
+        This method handles creating new attachments, updating existing ones, and removing attachments
+        that no longer exist in Mercury.
+
+        Args:
+            transaction_id (str): Mercury transaction ID
+            transaction_data: Transaction data object from Mercury API
+            db_session: Database session
+
+        Returns:
+            int: Number of attachments successfully synchronized
+
+        Raises:
+            Exception: If database operations fail
+        """
+        try:
+            # Get attachment data from transaction object
+            attachments_data = self._safe_get(transaction_data, "attachments")
+            
+            if not attachments_data:
+                attachments_data = []
+            
+            # Ensure attachments_data is iterable
+            if not isinstance(attachments_data, (list, tuple)):
+                attachments_data = [attachments_data]
+
+            # Get all existing attachments for this transaction
+            existing_attachments = (
+                db_session.query(TransactionAttachment)
+                .filter(TransactionAttachment.transaction_id == transaction_id)
+                .all()
+            )
+            
+            # Create a set to track which attachment IDs we find in Mercury data
+            mercury_attachment_ids = set()
+            synced_count = 0
+
+            # Process attachments from Mercury
+            for attachment_data in attachments_data:
+                # Generate a unique attachment ID since Mercury attachments might not have IDs
+                # Use a combination of transaction ID and filename or URL
+                attachment_filename = self._safe_get(attachment_data, "fileName")
+                attachment_url = self._safe_get(attachment_data, "url")
+                
+                # Create a unique ID based on transaction ID and filename/URL
+                if attachment_filename:
+                    attachment_id = f"{transaction_id}_{attachment_filename}"
+                elif attachment_url:
+                    # Extract filename from URL or use URL hash
+                    url_parts = attachment_url.split('/')
+                    if len(url_parts) > 1:
+                        attachment_id = f"{transaction_id}_{url_parts[-1].split('?')[0]}"
+                    else:
+                        attachment_id = f"{transaction_id}_{hash(attachment_url)}"
+                else:
+                    # Fallback to index-based ID
+                    attachment_id = f"{transaction_id}_{synced_count}"
+                
+                # Track this attachment ID as existing in Mercury
+                mercury_attachment_ids.add(attachment_id)
+                
+                logger.debug("Processing attachment: %s for transaction %s", attachment_id, transaction_id)
+
+                # Check if attachment exists
+                existing_attachment = (
+                    db_session.query(TransactionAttachment)
+                    .filter(TransactionAttachment.id == attachment_id)
+                    .first()
+                )
+
+                # Parse upload date if available - Mercury doesn't seem to provide this in attachments
+                upload_date = None
+                
+                # Set URL expiration date - Mercury URLs expire after 12 hours
+                from datetime import datetime, timedelta
+                url_expires_at = datetime.utcnow() + timedelta(hours=12)
+
+                if existing_attachment:
+                    # Update existing attachment - always overwrite with latest data
+                    existing_attachment.filename = self._safe_get(
+                        attachment_data, "fileName"
+                    )
+                    existing_attachment.content_type = self._safe_get(
+                        attachment_data, "contentType"
+                    ) or self._safe_get(
+                        attachment_data, "mimeType"
+                    )
+                    existing_attachment.file_size = self._safe_get(
+                        attachment_data, "fileSize"
+                    ) or self._safe_get(
+                        attachment_data, "size"
+                    )
+                    existing_attachment.description = self._safe_get(
+                        attachment_data, "description"
+                    ) or self._safe_get(
+                        attachment_data, "attachmentType"
+                    )
+                    existing_attachment.mercury_url = self._safe_get(
+                        attachment_data, "url"
+                    )
+                    existing_attachment.thumbnail_url = self._safe_get(
+                        attachment_data, "thumbnailUrl"
+                    )
+                    existing_attachment.url_expires_at = url_expires_at  # Reset expiration on update
+                    
+                    if upload_date:
+                        existing_attachment.upload_date = upload_date  # type: ignore[assignment]
+
+                    logger.debug("Updated attachment: %s", attachment_id)
+                else:
+                    # Create new attachment
+                    try:
+                        new_attachment = TransactionAttachment(
+                            id=attachment_id,
+                            transaction_id=transaction_id,
+                            filename=self._safe_get(attachment_data, "fileName"),
+                            content_type=self._safe_get(attachment_data, "contentType") 
+                                       or self._safe_get(attachment_data, "mimeType"),
+                            file_size=self._safe_get(attachment_data, "fileSize") 
+                                    or self._safe_get(attachment_data, "size"),
+                            description=self._safe_get(attachment_data, "description")
+                                      or self._safe_get(attachment_data, "attachmentType"),
+                            mercury_url=self._safe_get(attachment_data, "url"),
+                            thumbnail_url=self._safe_get(attachment_data, "thumbnailUrl"),
+                            upload_date=upload_date,
+                            url_expires_at=url_expires_at,
+                        )
+                        db_session.add(new_attachment)
+                        logger.debug("Created new attachment: %s", attachment_id)
+                    except Exception as create_error:
+                        logger.warning(
+                            "Failed to create attachment %s: %s. Checking if it exists...",
+                            attachment_id,
+                            create_error
+                        )
+                        # Flush the session to handle potential race conditions
+                        db_session.flush()
+                        
+                        # Check again if attachment was created by another process
+                        existing_attachment = (
+                            db_session.query(TransactionAttachment)
+                            .filter(TransactionAttachment.id == attachment_id)
+                            .first()
+                        )
+                        
+                        if existing_attachment:
+                            # Update it with latest data if it was created by another process
+                            existing_attachment.filename = self._safe_get(attachment_data, "fileName")
+                            existing_attachment.content_type = self._safe_get(
+                                attachment_data, "contentType"
+                            ) or self._safe_get(attachment_data, "mimeType")
+                            existing_attachment.file_size = self._safe_get(
+                                attachment_data, "fileSize"
+                            ) or self._safe_get(attachment_data, "size")
+                            existing_attachment.description = self._safe_get(
+                                attachment_data, "description"
+                            ) or self._safe_get(attachment_data, "attachmentType")
+                            existing_attachment.mercury_url = self._safe_get(attachment_data, "url")
+                            existing_attachment.thumbnail_url = self._safe_get(
+                                attachment_data, "thumbnailUrl"
+                            )
+                            existing_attachment.url_expires_at = url_expires_at  # Reset expiration
+                            if upload_date:
+                                existing_attachment.upload_date = upload_date
+                            logger.debug("Updated attachment after creation conflict: %s", attachment_id)
+                        else:
+                            # Still couldn't create or find it, skip this attachment
+                            logger.error("Could not create or find attachment %s", attachment_id)
+                            continue
+
+                synced_count += 1
+
+            # Remove attachments that no longer exist in Mercury
+            deleted_count = 0
+            for existing_attachment in existing_attachments:
+                if existing_attachment.id not in mercury_attachment_ids:
+                    logger.debug(
+                        "Removing attachment %s for transaction %s (no longer exists in Mercury)",
+                        existing_attachment.id,
+                        transaction_id
+                    )
+                    db_session.delete(existing_attachment)
+                    deleted_count += 1
+            
+            if deleted_count > 0:
+                logger.info(
+                    "Removed %d deleted attachments for transaction %s",
+                    deleted_count,
+                    transaction_id
+                )
+
+            logger.debug(
+                "Synced %d attachments, removed %d deleted attachments for transaction %s", 
+                synced_count, 
+                deleted_count,
+                transaction_id
+            )
+            return synced_count
+
+        except Exception as e:
+            logger.error(
+                "Error syncing attachments for transaction %s: %s",
+                transaction_id,
+                e,
+            )
             raise
 
     def run_sync(self, days_back: int = 30):

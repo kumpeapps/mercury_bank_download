@@ -11,6 +11,42 @@
 .form-check-group .form-check {
     margin-bottom: 0.25rem;
 }
+
+/* Attachment icon hover effects */
+.attachment-icon:hover {
+    transform: scale(1.1);
+    transition: transform 0.2s ease-in-out;
+}
+
+/* Attachment image hover e                    html += `
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card h-100 attachment-card">
+                                <div class="card-body text-center">`;ts */
+.attachment-image:hover {
+    transform: scale(1.05);
+    transition: transform 0.3s ease-in-out;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+/* Full screen modal styling */
+#fullScreenImageModal .modal-body {
+    background: rgba(0,0,0,0.9);
+}
+
+#fullScreenImage {
+    object-fit: contain;
+    cursor: zoom-out;
+}
+
+/* Attachment card styling */
+.attachment-card {
+    transition: transform 0.2s ease-in-out;
+}
+
+.attachment-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
 </style>
 
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
@@ -202,8 +238,28 @@
                             {% endif %}
                         </td>
                         <td class="text-center">
-                            {% if transaction.number_of_attachments > 0 %}
-                                <i class="fas fa-receipt text-primary" title="{{ transaction.number_of_attachments }} attachment(s)"></i>
+                            {% set account = accounts | selectattr('id', 'equalto', transaction.account_id) | first %}
+                            {% if account %}
+                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, transaction.number_of_attachments > 0) %}
+                                {% if receipt_status == 'required_present' %}
+                                    <i class="fas fa-receipt text-success attachment-icon" 
+                                       style="cursor: pointer;" 
+                                       data-transaction-id="{{ transaction.id }}"
+                                       title="Receipt required and present ({{ transaction.number_of_attachments }} attachment(s)) - Click to view"></i>
+                                {% elif receipt_status == 'required_missing' %}
+                                    <i class="fas fa-receipt text-danger" title="Receipt required but missing"></i>
+                                {% elif receipt_status == 'optional_present' %}
+                                    <i class="fas fa-receipt text-info attachment-icon" 
+                                       style="cursor: pointer;" 
+                                       data-transaction-id="{{ transaction.id }}"
+                                       title="Receipt not required but present ({{ transaction.number_of_attachments }} attachment(s)) - Click to view"></i>
+                                {% endif %}
+                            {% elif transaction.number_of_attachments > 0 %}
+                                {# Fallback for cases where account lookup fails #}
+                                <i class="fas fa-receipt text-primary attachment-icon" 
+                                   style="cursor: pointer;" 
+                                   data-transaction-id="{{ transaction.id }}"
+                                   title="{{ transaction.number_of_attachments }} attachment(s) - Click to view"></i>
                             {% endif %}
                         </td>
                     </tr>
@@ -250,4 +306,197 @@
     </div>
     {% endif %}
 </div>
+
+<!-- Attachment Modal -->
+<div class="modal fade" id="attachmentModal" tabindex="-1" aria-labelledby="attachmentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="attachmentModalLabel">
+                    <i class="fas fa-receipt me-2"></i>Transaction Attachments
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="attachmentContent">
+                    <div class="d-flex justify-content-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Full Screen Image Modal -->
+<div class="modal fade" id="fullScreenImageModal" tabindex="-1" aria-labelledby="fullScreenImageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content bg-dark">
+            <div class="modal-header border-0">
+                <h5 class="modal-title text-white" id="fullScreenImageModalLabel">
+                    <i class="fas fa-expand-alt me-2"></i>Full Screen View
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body d-flex align-items-center justify-content-center p-0">
+                <img id="fullScreenImage" src="" alt="Attachment" class="img-fluid" style="max-height: 90vh; max-width: 100%;">
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle attachment icon clicks
+    document.querySelectorAll('.attachment-icon').forEach(function(icon) {
+        icon.addEventListener('click', function() {
+            const transactionId = this.getAttribute('data-transaction-id');
+            loadAttachments(transactionId);
+        });
+    });
+    
+    // Function to load attachments for a transaction
+    function loadAttachments(transactionId) {
+        const modal = new bootstrap.Modal(document.getElementById('attachmentModal'));
+        const content = document.getElementById('attachmentContent');
+        
+        // Show loading spinner
+        content.innerHTML = `
+            <div class="d-flex justify-content-center">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        `;
+        
+        // Show modal
+        modal.show();
+        
+        // Fetch attachments
+        fetch(`/api/transaction/${transactionId}/attachments`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    content.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>${data.error}
+                        </div>
+                    `;
+                    return;
+                }
+                
+                if (data.attachments.length === 0) {
+                    content.innerHTML = `
+                        <div class="text-center py-4">
+                            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                            <h5>No Attachments Found</h5>
+                            <p class="text-muted">This transaction doesn't have any attachments.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Display attachments
+                let html = `<div class="row g-3">`;
+                
+                data.attachments.forEach(attachment => {
+                    const isImage = attachment.is_image;
+                    const isPdf = attachment.is_pdf;
+                    const isExpired = attachment.is_url_expired;
+                    
+                    html += `
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card h-100 ${isExpired ? 'border-warning' : ''}">
+                                <div class="card-body text-center">
+                                    ${isExpired ? `
+                                        <div class="alert alert-warning py-2 mb-2">
+                                            <i class="fas fa-clock me-1"></i>URL Expired
+                                        </div>
+                                    ` : ''}
+                                    
+                                    ${isImage ? `
+                                        ${isExpired ? `
+                                            <div class="mb-2">
+                                                <i class="fas fa-image text-warning fa-3x"></i>
+                                                <div class="text-muted small mt-2">Image no longer accessible</div>
+                                            </div>
+                                        ` : `
+                                            <img src="${attachment.mercury_url || '/static/img/no-image.png'}" 
+                                                 alt="${attachment.filename || 'Attachment'}" 
+                                                 class="img-fluid rounded mb-2 attachment-image"
+                                                 style="max-height: 150px; cursor: pointer;"
+                                                 onclick="showFullScreenImage('${attachment.mercury_url}', '${attachment.filename || 'Attachment'}')">
+                                        `}
+                                    ` : `
+                                        <div class="mb-2">
+                                            <i class="fas ${isPdf ? 'fa-file-pdf' : 'fa-file'} ${isExpired ? 'text-warning' : (isPdf ? 'text-danger' : 'text-muted')} fa-3x"></i>
+                                            ${isExpired ? `<div class="text-muted small mt-2">File no longer accessible</div>` : ''}
+                                        </div>
+                                    `}
+                                    
+                                    <h6 class="card-title text-truncate" title="${attachment.filename || 'Unknown filename'}">
+                                        ${attachment.filename || 'Unknown filename'}
+                                    </h6>
+                                    
+                                    <div class="small text-muted">
+                                        ${attachment.content_type || 'Unknown type'}<br>
+                                        ${attachment.file_size_formatted}
+                                        ${attachment.upload_date ? `<br>Uploaded: ${new Date(attachment.upload_date).toLocaleDateString()}` : ''}
+                                        ${isExpired && attachment.url_expires_at ? `<br><span class="text-warning">Expired: ${new Date(attachment.url_expires_at).toLocaleDateString()}</span>` : ''}
+                                    </div>
+                                    
+                                    ${attachment.description ? `
+                                        <p class="card-text small mt-2">${attachment.description}</p>
+                                    ` : ''}
+                                    
+                                    ${attachment.mercury_url && !isExpired ? `
+                                        <a href="${attachment.mercury_url}" target="_blank" class="btn btn-sm btn-outline-primary mt-2">
+                                            <i class="fas fa-external-link-alt me-1"></i>View Original
+                                        </a>
+                                    ` : isExpired ? `
+                                        <button class="btn btn-sm btn-outline-warning mt-2" disabled>
+                                            <i class="fas fa-clock me-1"></i>URL Expired
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += `</div>`;
+                content.innerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error loading attachments:', error);
+                content.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>Error loading attachments. Please try again.
+                    </div>
+                `;
+            });
+    }
+    
+    // Function to show full screen image
+    window.showFullScreenImage = function(imageUrl, filename) {
+        if (!imageUrl) return;
+        
+        const fullScreenModal = new bootstrap.Modal(document.getElementById('fullScreenImageModal'));
+        const fullScreenImage = document.getElementById('fullScreenImage');
+        const modalTitle = document.getElementById('fullScreenImageModalLabel');
+        
+        fullScreenImage.src = imageUrl;
+        fullScreenImage.alt = filename || 'Attachment';
+        modalTitle.innerHTML = `<i class="fas fa-expand-alt me-2"></i>${filename || 'Full Screen View'}`;
+        
+        fullScreenModal.show();
+    };
+});
+</script>
+
 {% endblock %}

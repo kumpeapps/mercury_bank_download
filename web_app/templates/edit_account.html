@@ -41,6 +41,41 @@
                         </div>
                     </div>
 
+                    <hr>
+
+                    <!-- Receipt Requirements Section -->
+                    <div class="mb-4">
+                        <h6 class="text-muted">Receipt Requirements</h6>
+                        <div class="mb-3">
+                            <label for="receipt_required" class="form-label">Receipt Requirement</label>
+                            <select class="form-select" id="receipt_required" name="receipt_required">
+                                <option value="none" {{ 'selected' if account.receipt_required == 'none' else '' }}>
+                                    No receipt required
+                                </option>
+                                <option value="always" {{ 'selected' if account.receipt_required == 'always' else '' }}>
+                                    Always require receipt
+                                </option>
+                                <option value="threshold" {{ 'selected' if account.receipt_required == 'threshold' else '' }}>
+                                    Require receipt above dollar amount
+                                </option>
+                            </select>
+                            <div class="form-text">
+                                Set when receipts are required for transactions on this account.
+                            </div>
+                        </div>
+
+                        <div class="mb-3" id="threshold-input" style="display: {{ 'block' if account.receipt_required == 'threshold' else 'none' }};">
+                            <label for="receipt_threshold" class="form-label">Receipt Threshold ($)</label>
+                            <input type="number" step="0.01" min="0" class="form-control" 
+                                   id="receipt_threshold" name="receipt_threshold" 
+                                   value="{{ account.receipt_threshold or '' }}" 
+                                   placeholder="0.00">
+                            <div class="form-text">
+                                Receipts will be required for transactions with an absolute value at or above this amount.
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="row">
                         <div class="col-md-6">
                             <button type="submit" class="btn btn-primary w-100">
@@ -56,4 +91,21 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const receiptRequiredSelect = document.getElementById('receipt_required');
+    const thresholdInput = document.getElementById('threshold-input');
+    
+    function toggleThresholdInput() {
+        if (receiptRequiredSelect.value === 'threshold') {
+            thresholdInput.style.display = 'block';
+        } else {
+            thresholdInput.style.display = 'none';
+        }
+    }
+    
+    receiptRequiredSelect.addEventListener('change', toggleThresholdInput);
+});
+</script>
 {% endblock %}
