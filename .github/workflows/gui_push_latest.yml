@@ -1,7 +1,7 @@
 name: Push Sync GUI Service to Docker Hub (Latest)
 
 concurrency:
-  group: production
+  group: gui-production
   cancel-in-progress: true
   
 on:
@@ -13,7 +13,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production
+    environment: gui-production
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2

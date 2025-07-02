@@ -1,7 +1,7 @@
 name: Push Sync GUI Service to Docker Hub (Release)
 
 concurrency:
-  group: release
+  group: gui-release
   cancel-in-progress: true
 
 on:
@@ -11,7 +11,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: release
+    environment: gui-release
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
