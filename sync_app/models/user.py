@@ -139,7 +139,13 @@ class User(Base):
         return False
 
     def get_id(self):
-        """Return the user ID as a string (required by Flask-Login)."""
+        """Return the user ID as a string (required by Flask-Login).
+
+        Raises:
+            ValueError: If the user ID is None.
+        """
+        if self.id is None:
+            raise ValueError("User ID is None; cannot return a valid user ID for Flask-Login.")
         return str(self.id)
 
     def set_password(self, password):
