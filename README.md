@@ -67,7 +67,7 @@ Use pre-built Docker Hub images for production:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/mercury_bank_download.git
+git clone https://github.com/kumpeapps/mercury_bank_download.git
 cd mercury_bank_download
 
 # Update docker-compose.yml with your Docker Hub username
@@ -89,7 +89,7 @@ Build and run locally for development:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/mercury_bank_download.git
+git clone https://github.com/kumpeapps/mercury_bank_download.git
 cd mercury_bank_download
 
 # Start development environment (builds locally)
@@ -304,7 +304,7 @@ GROUP BY ma.id;"
 
 ### Available Images
 
-- **Production**: `justinkumpe/mercury_bank_download:latest`
+- **Production**: `kumpeapps/mercury_bank_download:latest`
 - **Beta**: `mercury_bank_download:latest-beta`
 
 ### Custom Docker Build
@@ -341,7 +341,7 @@ services:
 version: '3.8'
 services:
   mercury-sync:
-    image: justinkumpe/mercury_bank_download:latest
+    image: kumpeapps/mercury_bank_download:latest
     environment:
       - DATABASE_URL=mysql+pymysql://user:pass@external-db:3306/mercury
     restart: unless-stopped
@@ -358,7 +358,7 @@ services:
 
 ```bash
 # Clone repository
-git clone https://github.com/your-username/mercury_bank_download.git
+git clone https://github.com/kumpeapps/mercury_bank_download.git
 cd mercury_bank_download
 
 # Create virtual environment
@@ -561,9 +561,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/your-username/mercury_bank_download/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/your-username/mercury_bank_download/discussions)
-- 📧 **Email**: support@yourdomain.com
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/kumpeapps/mercury_bank_download/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/kumpeapps/mercury_bank_download/discussions)
+- 📧 **Email**: support@kumpeapps.com
 
 ---
 
