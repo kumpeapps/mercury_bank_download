@@ -705,8 +705,21 @@ class MercuryBankSyncer:
                                     attachment_count = self.sync_transaction_attachments(
                                         transaction_id, transaction_data, db
                                     )
+                                    
+                                    # Update the transaction's number_of_attachments with the actual count
+                                    # This ensures the field is accurate regardless of what Mercury API provides
+                                    if existing_transaction:
+                                        existing_transaction.number_of_attachments = attachment_count
+                                    else:
+                                        # Find the newly created transaction and update it
+                                        created_transaction = db.query(Transaction).filter(
+                                            Transaction.id == transaction_id
+                                        ).first()
+                                        if created_transaction:
+                                            created_transaction.number_of_attachments = attachment_count
+                                    
                                     logger.info(
-                                        "Synced %d attachments for transaction %s",
+                                        "Synced %d attachments for transaction %s, updated number_of_attachments field",
                                         attachment_count,
                                         transaction_id,
                                     )

@@ -1976,6 +1976,14 @@ def add_user_form():
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
+        # Check if users are externally managed
+        users_externally_managed = SystemSetting.get_bool_value(
+            db_session, "users_externally_managed", default=False
+        )
+        if users_externally_managed:
+            flash("User creation is not allowed when users are externally managed.", "error")
+            return redirect(url_for("admin_users"))
+
         return render_template("add_user.html")
     finally:
         db_session.close()
@@ -1997,6 +2005,14 @@ def add_user_submit():
         if not user_in_session.is_admin:
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
+
+        # Check if users are externally managed
+        users_externally_managed = SystemSetting.get_bool_value(
+            db_session, "users_externally_managed", default=False
+        )
+        if users_externally_managed:
+            flash("User creation is not allowed when users are externally managed.", "error")
+            return redirect(url_for("admin_users"))
 
         username = request.form.get("username", "").strip()
         email = request.form.get("email", "").strip()
@@ -2427,8 +2443,7 @@ def edit_account(account_id):
         mercury_account = db_session.query(MercuryAccount).filter_by(id=account.mercury_account_id).first()
 
         if request.method == "POST":
-            # Update account fields
-            account.nickname = request.form.get("nickname", "").strip() or None
+            # Update account fields (nickname is read-only from Mercury API)
             account.receipt_required = request.form.get("receipt_required", "none")
             
             # Handle receipt threshold

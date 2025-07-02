@@ -28,18 +28,22 @@
 
                 <hr>
 
+                <!-- Account Information (Read-Only) -->
+                {% if account.nickname %}
+                <div class="mb-3">
+                    <label class="form-label">Account Nickname</label>
+                    <div class="form-control-plaintext bg-light p-2 rounded border">
+                        {{ account.nickname }}
+                    </div>
+                    <div class="form-text text-muted">
+                        <i class="fas fa-info-circle"></i>
+                        This nickname is set by Mercury Bank and cannot be modified.
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- Edit Form -->
                 <form method="POST">
-                    <div class="mb-3">
-                        <label for="nickname" class="form-label">Account Nickname</label>
-                        <input type="text" class="form-control" id="nickname" name="nickname" 
-                               value="{{ account.nickname or '' }}" 
-                               placeholder="Enter a custom name for this account">
-                        <div class="form-text">
-                            A custom nickname to help you identify this account. 
-                            Leave empty to use the default account name.
-                        </div>
-                    </div>
 
                     <hr>
 
