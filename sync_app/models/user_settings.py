@@ -1,6 +1,6 @@
 """User settings model for storing user preferences and configuration."""
 
-from sqlalchemy import Column, DateTime, Boolean, text, Integer, ForeignKey, JSON
+from sqlalchemy import Column, DateTime, Boolean, text, Integer, String, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from .base import Base
 
@@ -17,6 +17,7 @@ class UserSettings(Base):
         id (int): Primary key - unique identifier
         user_id (int): Foreign key reference to the User
         primary_mercury_account_id (int, optional): Default Mercury account for filtering
+        primary_account_id (int, optional): Default account within Mercury account for filtering
         dashboard_preferences (dict, optional): JSON object storing dashboard preferences
         report_preferences (dict, optional): JSON object storing report preferences
         created_at (datetime): Timestamp when settings were created
@@ -24,6 +25,7 @@ class UserSettings(Base):
 
         user (User): User object this settings belongs to
         primary_mercury_account (MercuryAccount): Primary Mercury account object
+        primary_account (Account): Primary account object
     """
 
     __tablename__ = "user_settings"
@@ -34,6 +36,9 @@ class UserSettings(Base):
 
     # Primary Mercury account for default filtering
     primary_mercury_account_id = Column(Integer, ForeignKey('mercury_accounts.id'), nullable=True)
+    
+    # Primary account within the Mercury account for default filtering
+    primary_account_id = Column(String(255), ForeignKey('accounts.id'), nullable=True)
 
     # JSON fields for flexible settings storage
     dashboard_preferences = Column(JSON, nullable=True, default=lambda: {})
@@ -58,6 +63,10 @@ class UserSettings(Base):
     primary_mercury_account = relationship(
         "MercuryAccount",
         foreign_keys=[primary_mercury_account_id]
+    )
+    primary_account = relationship(
+        "Account",
+        foreign_keys=[primary_account_id]
     )
 
     def __repr__(self):
