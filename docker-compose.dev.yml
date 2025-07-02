@@ -18,8 +18,8 @@ services:
       # Add development-specific environment variables
       FLASK_ENV: development
       FLASK_DEBUG: 1
-      # Keep externally managed users enabled
-      USERS_EXTERNALLY_MANAGED: true
+      # Allow local user registration for development
+      USERS_EXTERNALLY_MANAGED: false
     volumes:
       # Add volume mount for development (hot reload)
       - ./web_app:/app

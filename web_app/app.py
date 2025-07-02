@@ -155,11 +155,32 @@ def initialize_system_settings():
                 # Always update the external management setting to match environment variable
                 existing.value = value
                 print(f"✅ Updated users_externally_managed setting to: {value}")
-            elif users_externally_managed and key in ["registration_enabled", "prevent_user_deletion"]:
-                # When users are externally managed, only update user management settings (not branding)
-                existing.value = value
-                existing.is_editable = is_editable
-                print(f"✅ Updated user management setting due to external management: {key} = {value}")
+                
+        # Apply fallback logic: if no admin users exist, enable registration regardless of settings
+        admin_count = (
+            db_session.query(User)
+            .join(UserSettings)
+            .filter(UserSettings.is_admin == True)
+            .count()
+        )
+        
+        print(f"🔍 Admin user count: {admin_count}")
+        
+        if admin_count == 0:
+            # No admins exist - force enable registration as a safety fallback
+            registration_setting = db_session.query(SystemSetting).filter_by(key="registration_enabled").first()
+            if registration_setting:
+                current_value = registration_setting.value
+                print(f"🔍 Current registration_enabled value: {current_value}")
+                if current_value == "false":
+                    registration_setting.value = "true"
+                    print("🚨 No admin users found - enabling registration as safety fallback")
+                else:
+                    print("ℹ️  Registration already enabled - no fallback action needed")
+            else:
+                print("⚠️  registration_enabled setting not found")
+        else:
+            print(f"ℹ️  Found {admin_count} admin user(s) - no fallback needed")
 
         db_session.commit()
     except Exception as e:
