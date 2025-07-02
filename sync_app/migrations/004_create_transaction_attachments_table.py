@@ -5,8 +5,9 @@ This migration creates a new table to store detailed information about
 attachments associated with transactions from the Mercury Bank API.
 """
 
-from sqlalchemy import text
-from models.base import create_engine_and_session
+from sqlalchemy import Column, String, Integer, Text, DateTime, ForeignKey, Index
+from sqlalchemy.sql import func
+from models.base import create_engine_and_session, Base
 import logging
 
 # Configure logging
@@ -23,47 +24,45 @@ def upgrade(engine=None):
         Session = sessionmaker(bind=engine)
         db_session = Session()
     else:
-        _, db_session = create_engine_and_session()
+        engine, db_session = create_engine_and_session()
     
     try:
+        # Create the table using SQLAlchemy
+        from sqlalchemy import MetaData, Table
+        
+        metadata = MetaData()
+        
         # Check if table already exists
-        result = db_session.execute(text("""
-            SELECT COUNT(*) as count 
-            FROM information_schema.tables 
-            WHERE table_schema = DATABASE() 
-            AND table_name = 'transaction_attachments'
-        """))
-        
-        table_exists = result.fetchone()[0] > 0
-        
-        if table_exists:
+        metadata.reflect(bind=engine)
+        if 'transaction_attachments' in metadata.tables:
             logger.info("Table transaction_attachments already exists, skipping creation")
             return
         
-        # Create transaction_attachments table
-        db_session.execute(text("""
-            CREATE TABLE transaction_attachments (
-                id VARCHAR(255) PRIMARY KEY,
-                transaction_id VARCHAR(255) NOT NULL,
-                filename VARCHAR(500),
-                content_type VARCHAR(100),
-                file_size INT,
-                description TEXT,
-                mercury_url TEXT,
-                thumbnail_url TEXT,
-                upload_date DATETIME,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                
-                CONSTRAINT fk_transaction_attachments_transaction_id 
-                FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
-                
-                INDEX idx_transaction_attachments_transaction_id (transaction_id),
-                INDEX idx_transaction_attachments_filename (filename),
-                INDEX idx_transaction_attachments_content_type (content_type),
-                INDEX idx_transaction_attachments_upload_date (upload_date)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        """))
+        # Define the table structure using SQLAlchemy
+        transaction_attachments = Table(
+            'transaction_attachments',
+            metadata,
+            Column('id', String(255), primary_key=True),
+            Column('transaction_id', String(255), ForeignKey('transactions.id', ondelete='CASCADE'), nullable=False),
+            Column('filename', String(500)),
+            Column('content_type', String(100)),
+            Column('file_size', Integer),
+            Column('description', Text),
+            Column('mercury_url', Text),
+            Column('thumbnail_url', Text),
+            Column('upload_date', DateTime),
+            Column('created_at', DateTime, default=func.current_timestamp()),
+            Column('updated_at', DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp()),
+            
+            # Indexes
+            Index('idx_transaction_attachments_transaction_id', 'transaction_id'),
+            Index('idx_transaction_attachments_filename', 'filename'),
+            Index('idx_transaction_attachments_content_type', 'content_type'),
+            Index('idx_transaction_attachments_upload_date', 'upload_date'),
+        )
+        
+        # Create the table
+        transaction_attachments.create(engine)
         
         db_session.commit()
         logger.info("Successfully created transaction_attachments table")
@@ -85,25 +84,22 @@ def downgrade(engine=None):
         Session = sessionmaker(bind=engine)
         db_session = Session()
     else:
-        _, db_session = create_engine_and_session()
+        engine, db_session = create_engine_and_session()
     
     try:
-        # Check if table exists before dropping
-        result = db_session.execute(text("""
-            SELECT COUNT(*) as count 
-            FROM information_schema.tables 
-            WHERE table_schema = DATABASE() 
-            AND table_name = 'transaction_attachments'
-        """))
+        # Drop the table using SQLAlchemy
+        from sqlalchemy import MetaData, Table
         
-        table_exists = result.fetchone()[0] > 0
+        metadata = MetaData()
+        metadata.reflect(bind=engine)
         
-        if not table_exists:
+        if 'transaction_attachments' not in metadata.tables:
             logger.info("Table transaction_attachments does not exist, skipping drop")
             return
         
-        # Drop the table
-        db_session.execute(text("DROP TABLE transaction_attachments"))
+        # Get the table and drop it
+        transaction_attachments = metadata.tables['transaction_attachments']
+        transaction_attachments.drop(engine)
         
         db_session.commit()
         logger.info("Successfully dropped transaction_attachments table")
