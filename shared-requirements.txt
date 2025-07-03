@@ -1,0 +1,12 @@
+# Common dependencies for both sync and web apps
+# See sync_app/requirements.txt and web_app/requirements.txt for specific requirements
+
+# This file is for reference only - each app has its own requirements.txt
+# Shared dependencies include:
+# - SQLAlchemy (database ORM)
+# - PyMySQL (MySQL connector)
+# - python-dotenv (environment variables)
+
+# To install dependencies for each app:
+# cd sync_app && pip install -r requirements.txt
+# cd web_app && pip install -r requirements.txt

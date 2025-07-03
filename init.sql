@@ -1,13 +1,23 @@
--- Initialize Mercury Bank database
-USE mercury_bank;
+-- MySQL initialization script for Mercury Bank application
+-- This script will be executed when the MySQL container starts for the first time
 
--- Create indexes for better performance
-CREATE INDEX idx_transactions_account_id ON transactions(account_id);
-CREATE INDEX idx_transactions_posted_at ON transactions(posted_at);
-CREATE INDEX idx_transactions_status ON transactions(status);
-CREATE INDEX idx_accounts_account_number ON accounts(account_number);
-CREATE INDEX idx_accounts_status ON accounts(status);
+-- Ensure we're using the correct database
+USE mercury_db;
 
--- Grant additional permissions if needed
-GRANT ALL PRIVILEGES ON mercury_bank.* TO 'mercury'@'%';
-FLUSH PRIVILEGES;
+-- Set timezone
+SET time_zone = '+00:00';
+
+-- IMPORTANT: All database operations should be done through SQLAlchemy
+-- This file is only for initial MySQL-specific configuration
+-- Tables, schema changes, and data migrations are all handled by SQLAlchemy
+
+-- DO NOT add SQL schema definitions or data insertions here
+-- Instead, use the appropriate SQLAlchemy models and migrations
+
+-- Application will automatically:
+-- 1. Create all tables via SQLAlchemy models
+-- 2. Initialize system settings via Python code
+-- 3. Handle all migrations through SQLAlchemy-based migration system
+-- 4. Manage admin users and permissions
+
+-- For more information, see the documentation in docs/ directory

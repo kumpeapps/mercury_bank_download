@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Mercury Account - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-edit me-2"></i>Edit Mercury Account</h1>
+    <a href="{{ url_for('accounts') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Accounts
+    </a>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-link me-2"></i>Mercury Account Details</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Account Name</label>
+                        <input type="text" class="form-control" id="name" name="name" 
+                               value="{{ mercury_account.name }}" required>
+                        <div class="form-text">A descriptive name for this Mercury account group</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="api_key" class="form-label">API Key</label>
+                        <input type="password" class="form-control" id="api_key" name="api_key" 
+                               value="{{ mercury_account.api_key }}" required>
+                        <div class="form-text">Your Mercury Bank API key for accessing account data</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="environment" class="form-label">Environment</label>
+                        <select class="form-select" id="environment" name="environment">
+                            <option value="sandbox" {{ 'selected' if mercury_account.sandbox_mode else '' }}>Sandbox (Testing)</option>
+                            <option value="production" {{ 'selected' if not mercury_account.sandbox_mode else '' }}>Production (Live)</option>
+                        </select>
+                        <div class="form-text">Use sandbox for testing, production for live data</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description (Optional)</label>
+                        <textarea class="form-control" id="description" name="description" rows="3">{{ mercury_account.description or '' }}</textarea>
+                        <div class="form-text">Additional notes about this Mercury account</div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_active" name="is_active" 
+                                       {{ 'checked' if mercury_account.is_active else '' }}>
+                                <label class="form-check-label" for="is_active">
+                                    Active
+                                </label>
+                                <div class="form-text">Whether this account should be available for use</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="sync_enabled" name="sync_enabled" 
+                                       {{ 'checked' if mercury_account.sync_enabled else '' }}>
+                                <label class="form-check-label" for="sync_enabled">
+                                    Sync Enabled
+                                </label>
+                                <div class="form-text">Whether to automatically sync data from this account</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-save me-2"></i>Update Account
+                            </button>
+                        </div>
+                        <div class="col-md-6">
+                            <a href="{{ url_for('accounts') }}" class="btn btn-outline-secondary w-100">Cancel</a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Danger Zone -->
+        <div class="card mt-4 border-danger">
+            <div class="card-header bg-danger text-white">
+                <h6 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Danger Zone</h6>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    Deleting this Mercury account will remove it and all associated data permanently. 
+                    This action cannot be undone.
+                </p>
+                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                    <i class="fas fa-trash me-2"></i>Delete Mercury Account
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">Confirm Deletion</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete <strong>{{ mercury_account.name }}</strong>?</p>
+                <p class="text-muted">This will permanently remove:</p>
+                <ul class="text-muted">
+                    <li>The Mercury account configuration</li>
+                    <li>All associated bank accounts</li>
+                    <li>All transaction data</li>
+                </ul>
+                <p class="text-danger"><strong>This action cannot be undone.</strong></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form method="POST" action="{{ url_for('delete_mercury_account', account_id=mercury_account.id) }}" class="d-inline">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash me-2"></i>Delete Permanently
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

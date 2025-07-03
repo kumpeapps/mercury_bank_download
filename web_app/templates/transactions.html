@@ -1,0 +1,502 @@
+{% extends "base.html" %}
+
+{% block title %}Transactions - {{ app_name }}{% endblock %}
+
+{% block content %}
+<style>
+.form-check-group {
+    max-height: 100px;
+    overflow-y: auto;
+}
+.form-check-group .form-check {
+    margin-bottom: 0.25rem;
+}
+
+/* Attachment icon hover effects */
+.attachment-icon:hover {
+    transform: scale(1.1);
+    transition: transform 0.2s ease-in-out;
+}
+
+/* Attachment image hover e                    html += `
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card h-100 attachment-card">
+                                <div class="card-body text-center">`;ts */
+.attachment-image:hover {
+    transform: scale(1.05);
+    transition: transform 0.3s ease-in-out;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+/* Full screen modal styling */
+#fullScreenImageModal .modal-body {
+    background: rgba(0,0,0,0.9);
+}
+
+#fullScreenImage {
+    object-fit: contain;
+    cursor: zoom-out;
+}
+
+/* Attachment card styling */
+.attachment-card {
+    transition: transform 0.2s ease-in-out;
+}
+
+.attachment-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+</style>
+
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-exchange-alt me-2"></i>Transactions</h1>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-2">
+                <label for="mercury_account_id" class="form-label">Mercury Account</label>
+                <select class="form-select" id="mercury_account_id" name="mercury_account_id">
+                    <option value="">All Mercury Accounts</option>
+                    {% for mercury_account in mercury_accounts %}
+                    <option value="{{ mercury_account.id }}" {% if current_mercury_account_id == mercury_account.id %}selected{% endif %}>
+                        {{ mercury_account.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="account_id" class="form-label">Bank Account</label>
+                <select class="form-select" id="account_id" name="account_id">
+                    <option value="">All Accounts</option>
+                    {% for account in accounts %}
+                    <option value="{{ account.id }}" {% if current_account_id == account.id %}selected{% endif %}>
+                        {{ account.nickname or account.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="month" class="form-label">Month</label>
+                <select class="form-select" id="month" name="month">
+                    <option value="">All Months</option>
+                    {% for month in available_months %}
+                    <option value="{{ month.value }}" {% if current_month == month.value %}selected{% endif %}>
+                        {{ month.label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="category" class="form-label">Category</label>
+                <select class="form-select" id="category" name="category">
+                    <option value="">All Categories</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>
+                        {{ cat }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Status</label>
+                <div class="form-check-group" style="max-height: 80px; overflow-y: auto;">
+                    {% for status in available_statuses %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="status" value="{{ status }}" 
+                               id="status_{{ status }}" 
+                               {% if status in current_status %}checked{% endif %}>
+                        <label class="form-check-label" for="status_{{ status }}">
+                            {{ 'Posted' if status == 'sent' else status.title() }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">&nbsp;</label>
+                <div class="d-flex flex-column gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-filter me-1"></i>Filter
+                    </button>
+                    <a href="{{ url_for('transactions') }}" class="btn btn-outline-secondary btn-sm">Clear</a>
+                </div>
+            </div>
+        </form>
+        
+        <!-- Export buttons -->
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('transactions', 
+                               mercury_account_id=current_mercury_account_id,
+                               account_id=current_account_id,
+                               category=current_category,
+                               month=current_month,
+                               status=current_status,
+                               export='csv') }}" 
+                       class="btn btn-outline-success btn-sm">
+                        <i class="fas fa-file-csv me-1"></i>Export CSV
+                    </a>
+                    <a href="{{ url_for('transactions', 
+                               mercury_account_id=current_mercury_account_id,
+                               account_id=current_account_id,
+                               category=current_category,
+                               month=current_month,
+                               status=current_status,
+                               export='excel') }}" 
+                       class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-file-excel me-1"></i>Export Excel
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Transactions Table -->
+<div class="card">
+    <div class="card-header">
+        <h6 class="mb-0">Transaction History</h6>
+    </div>
+    <div class="card-body p-0">
+        {% if transactions %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Account</th>
+                        <th>Description</th>
+                        <th>Category</th>
+                        <th>Type</th>
+                        <th class="text-end">Amount</th>
+                        <th>Status</th>
+                        <th>Receipt</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for transaction in transactions %}
+                    <tr>
+                        <td>
+                            {% if transaction.posted_at %}
+                                {{ transaction.posted_at.strftime('%m/%d/%Y %I:%M %p') }}
+                                <small class="text-muted d-block">Posted</small>
+                            {% else %}
+                                {{ transaction.created_at.strftime('%m/%d/%Y %I:%M %p') }}
+                                <small class="text-warning d-block">Created (Pending)</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">
+                                {{ transaction.account.nickname or transaction.account.name if transaction.account else 'Unknown' }}
+                            </small>
+                        </td>
+                        <td>
+                            <div class="text-truncate" style="max-width: 250px;" title="{{ transaction.description or transaction.bank_description or 'No description' }}">
+                                {{ transaction.description or transaction.bank_description or 'No description' }}
+                            </div>
+                            {% if transaction.counterparty_name %}
+                            <small class="text-muted d-block">{{ transaction.counterparty_name }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ transaction.note or 'Uncategorized' }}</span>
+                        </td>
+                        <td>
+                            {% if transaction.kind %}
+                                <span class="badge bg-info">{{ transaction.kind }}</span>
+                            {% elif transaction.transaction_type %}
+                                <span class="badge bg-outline-secondary">{{ transaction.transaction_type }}</span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <strong class="{% if transaction.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                {% if transaction.amount < 0 %}-{% endif %}${{ "%.2f"|format(transaction.amount|abs) }}
+                            </strong>
+                        </td>
+                        <td>
+                            {% if transaction.status %}
+                                {% if transaction.status == 'sent' %}
+                                    <span class="badge bg-success">Posted</span>
+                                {% elif transaction.status == 'pending' %}
+                                    <span class="badge bg-warning">{{ transaction.status|title }}</span>
+                                {% elif transaction.status == 'failed' %}
+                                    <span class="badge bg-danger">{{ transaction.status|title }}</span>
+                                {% elif transaction.status == 'cancelled' %}
+                                    <span class="badge bg-secondary">{{ transaction.status|title }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ transaction.status|title }}</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% set account = accounts | selectattr('id', 'equalto', transaction.account_id) | first %}
+                            {% if account %}
+                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, transaction.number_of_attachments > 0) %}
+                                {% if receipt_status == 'required_present' %}
+                                    <i class="fas fa-receipt text-success attachment-icon" 
+                                       style="cursor: pointer;" 
+                                       data-transaction-id="{{ transaction.id }}"
+                                       title="Receipt required and present ({{ transaction.number_of_attachments }} attachment(s)) - Click to view"></i>
+                                {% elif receipt_status == 'required_missing' %}
+                                    <i class="fas fa-receipt text-danger" title="Receipt required but missing"></i>
+                                {% elif receipt_status == 'optional_present' %}
+                                    <i class="fas fa-receipt text-info attachment-icon" 
+                                       style="cursor: pointer;" 
+                                       data-transaction-id="{{ transaction.id }}"
+                                       title="Receipt not required but present ({{ transaction.number_of_attachments }} attachment(s)) - Click to view"></i>
+                                {% endif %}
+                            {% elif transaction.number_of_attachments > 0 %}
+                                {# Fallback for cases where account lookup fails #}
+                                <i class="fas fa-receipt text-primary attachment-icon" 
+                                   style="cursor: pointer;" 
+                                   data-transaction-id="{{ transaction.id }}"
+                                   title="{{ transaction.number_of_attachments }} attachment(s) - Click to view"></i>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-inbox fa-4x text-muted mb-3"></i>
+            <h4>No Transactions Found</h4>
+            <p class="text-muted">
+                {% if current_account_id or current_category or (current_status and current_status != ['sent', 'pending']) %}
+                    No transactions match your current filters.
+                {% else %}
+                    No transactions available. Connect a Mercury account to see your transaction history.
+                {% endif %}
+            </p>
+            {% if current_account_id or current_category or (current_status and current_status != ['sent', 'pending']) %}
+            <a href="{{ url_for('transactions') }}" class="btn btn-primary">Clear Filters</a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Pagination -->
+    {% if transactions %}
+    <div class="card-footer">
+        <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted">
+                Showing {{ transactions|length }} transactions
+            </small>
+            <div>
+                {% if page > 1 %}
+                <a href="{{ url_for('transactions', page=page-1, account_id=current_account_id, category=current_category, status=current_status) }}" 
+                   class="btn btn-sm btn-outline-primary">Previous</a>
+                {% endif %}
+                {% if transactions|length == 50 %}
+                <a href="{{ url_for('transactions', page=page+1, account_id=current_account_id, category=current_category, status=current_status) }}" 
+                   class="btn btn-sm btn-outline-primary">Next</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Attachment Modal -->
+<div class="modal fade" id="attachmentModal" tabindex="-1" aria-labelledby="attachmentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="attachmentModalLabel">
+                    <i class="fas fa-receipt me-2"></i>Transaction Attachments
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="attachmentContent">
+                    <div class="d-flex justify-content-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Full Screen Image Modal -->
+<div class="modal fade" id="fullScreenImageModal" tabindex="-1" aria-labelledby="fullScreenImageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content bg-dark">
+            <div class="modal-header border-0">
+                <h5 class="modal-title text-white" id="fullScreenImageModalLabel">
+                    <i class="fas fa-expand-alt me-2"></i>Full Screen View
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body d-flex align-items-center justify-content-center p-0">
+                <img id="fullScreenImage" src="" alt="Attachment" class="img-fluid" style="max-height: 90vh; max-width: 100%;">
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle attachment icon clicks
+    document.querySelectorAll('.attachment-icon').forEach(function(icon) {
+        icon.addEventListener('click', function() {
+            const transactionId = this.getAttribute('data-transaction-id');
+            loadAttachments(transactionId);
+        });
+    });
+    
+    // Function to load attachments for a transaction
+    function loadAttachments(transactionId) {
+        const modal = new bootstrap.Modal(document.getElementById('attachmentModal'));
+        const content = document.getElementById('attachmentContent');
+        
+        // Show loading spinner
+        content.innerHTML = `
+            <div class="d-flex justify-content-center">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        `;
+        
+        // Show modal
+        modal.show();
+        
+        // Fetch attachments
+        fetch(`/api/transaction/${transactionId}/attachments`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    content.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>${data.error}
+                        </div>
+                    `;
+                    return;
+                }
+                
+                if (data.attachments.length === 0) {
+                    content.innerHTML = `
+                        <div class="text-center py-4">
+                            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                            <h5>No Attachments Found</h5>
+                            <p class="text-muted">This transaction doesn't have any attachments.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Display attachments
+                let html = `<div class="row g-3">`;
+                
+                data.attachments.forEach(attachment => {
+                    const isImage = attachment.is_image;
+                    const isPdf = attachment.is_pdf;
+                    const isExpired = attachment.is_url_expired;
+                    
+                    html += `
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card h-100 ${isExpired ? 'border-warning' : ''}">
+                                <div class="card-body text-center">
+                                    ${isExpired ? `
+                                        <div class="alert alert-warning py-2 mb-2">
+                                            <i class="fas fa-clock me-1"></i>URL Expired
+                                        </div>
+                                    ` : ''}
+                                    
+                                    ${isImage ? `
+                                        ${isExpired ? `
+                                            <div class="mb-2">
+                                                <i class="fas fa-image text-warning fa-3x"></i>
+                                                <div class="text-muted small mt-2">Image no longer accessible</div>
+                                            </div>
+                                        ` : `
+                                            <img src="${attachment.thumbnail_url || attachment.mercury_url || '/static/img/no-image.png'}" 
+                                                 alt="${attachment.filename || 'Attachment'}" 
+                                                 class="img-fluid rounded mb-2 attachment-image"
+                                                 style="max-height: 150px; cursor: pointer;"
+                                                 onclick="showFullScreenImage('${attachment.mercury_url}', '${attachment.filename || 'Attachment'}')">
+                                        `}
+                                    ` : `
+                                        <div class="mb-2">
+                                            <i class="fas ${isPdf ? 'fa-file-pdf' : 'fa-file'} ${isExpired ? 'text-warning' : (isPdf ? 'text-danger' : 'text-muted')} fa-3x"></i>
+                                            ${isExpired ? `<div class="text-muted small mt-2">File no longer accessible</div>` : ''}
+                                        </div>
+                                    `}
+                                    
+                                    <h6 class="card-title text-truncate" title="${attachment.filename || 'Unknown filename'}">
+                                        ${attachment.filename || 'Unknown filename'}
+                                    </h6>
+                                    
+                                    <div class="small text-muted">
+                                        ${attachment.content_type || 'Unknown type'}<br>
+                                        ${attachment.file_size_formatted}
+                                        ${attachment.upload_date ? `<br>Uploaded: ${new Date(attachment.upload_date).toLocaleDateString()}` : ''}
+                                        ${isExpired && attachment.url_expires_at ? `<br><span class="text-warning">Expired: ${new Date(attachment.url_expires_at).toLocaleDateString()}</span>` : ''}
+                                    </div>
+                                    
+                                    ${attachment.description ? `
+                                        <p class="card-text small mt-2">${attachment.description}</p>
+                                    ` : ''}
+                                    
+                                    ${attachment.mercury_url && !isExpired ? `
+                                        <a href="${attachment.mercury_url}" target="_blank" class="btn btn-sm btn-outline-primary mt-2">
+                                            <i class="fas fa-external-link-alt me-1"></i>View Original
+                                        </a>
+                                    ` : isExpired ? `
+                                        <button class="btn btn-sm btn-outline-warning mt-2" disabled>
+                                            <i class="fas fa-clock me-1"></i>URL Expired
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += `</div>`;
+                content.innerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error loading attachments:', error);
+                content.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>Error loading attachments. Please try again.
+                    </div>
+                `;
+            });
+    }
+    
+    // Function to show full screen image
+    window.showFullScreenImage = function(imageUrl, filename) {
+        if (!imageUrl) return;
+        
+        const fullScreenModal = new bootstrap.Modal(document.getElementById('fullScreenImageModal'));
+        const fullScreenImage = document.getElementById('fullScreenImage');
+        const modalTitle = document.getElementById('fullScreenImageModalLabel');
+        
+        fullScreenImage.src = imageUrl;
+        fullScreenImage.alt = filename || 'Attachment';
+        modalTitle.innerHTML = `<i class="fas fa-expand-alt me-2"></i>${filename || 'Full Screen View'}`;
+        
+        fullScreenModal.show();
+    };
+});
+</script>
+
+{% endblock %}

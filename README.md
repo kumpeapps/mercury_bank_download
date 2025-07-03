@@ -1,27 +1,57 @@
 I used AI to write this readme file, it does have errors and I will re-write it as soon as I have a chance.
 
-# Mercury Bank Data Synchronization
+# Mercury Bank Integration Platform
 
-A robust, production-ready Docker service for synchronizing Mercury Bank accounts and transactions to a MySQL database. Features multi-account management, user access control, and comprehensive monitoring capabilities.
+A comprehensive platform for Mercury Bank data synchronization and management, consisting of two main components:
 
-[![Docker](https://img.shields.io/badge/Docker-Supported-blue?logo=docker)](https://hub.docker.com/r/justinkumpe/mercury_bank_download)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-green?logo=python)](https://python.org)
-[![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-orange?logo=mysql)](https://mysql.com)
-[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+1. **Sync Service** (`sync_app/`) - Automated data synchronization from Mercury Bank API
+2. **Web Interface** (`web_app/`) - User-friendly web dashboard for data management and reporting
+
+## 🏗️ Project Structure
+
+```
+mercury_bank_download/
+├── sync_app/                    # Mercury Bank sync service
+│   ├── models/                  # Database models
+│   ├── migrations/              # Database migrations
+│   ├── sync.py                  # Main sync application
+│   ├── migration_manager.py     # Migration management
+│   ├── Dockerfile              # Sync service container
+│   ├── docker-compose.yml      # Sync service compose
+│   ├── requirements.txt        # Python dependencies
+│   └── README.md               # Sync service documentation
+├── web_app/                     # Web interface
+│   ├── models/                  # Database models (shared schema)
+│   ├── migrations/              # Web app migrations
+│   ├── templates/               # HTML templates
+│   ├── app.py                   # Flask web application
+│   ├── Dockerfile              # Web app container
+│   ├── docker-compose.yml      # Web app compose
+│   ├── requirements.txt        # Python dependencies
+│   └── README.md               # Web app documentation
+├── docker-compose.yml          # Main orchestration file
+└── README.md                   # This file
+```
 
 ## ✨ Features
 
+### Sync Service (`sync_app/`)
 - 🏦 **Account Synchronization** - Automated Mercury Bank account syncing
 - 💳 **Transaction Processing** - Real-time transaction data synchronization
-- 👥 **Multi-Account Management** - Support for multiple Mercury Bank accounts
-- 🔐 **User Access Control** - Role-based permissions and authentication
 - 🧪 **Sandbox Support** - Built-in testing environment support
-- 🐳 **Docker Ready** - Fully containerized deployment
-- 📊 **MySQL Database** - Persistent storage with optimized schema
+- 🔄 **Automatic Migrations** - Database schema updates handled automatically
 - ⚙️ **Configurable Sync** - Flexible scheduling and data range options
 - 📝 **Comprehensive Logging** - Detailed monitoring and debugging
 - 🏥 **Health Monitoring** - Built-in health checks and status reporting
-- 🔄 **Auto-Recovery** - Resilient error handling and retry logic
+
+### Web Interface (`web_app/`)
+- 👥 **Multi-User Support** - Role-based user management and authentication
+- 🔐 **Granular Access Control** - Account-level permissions and restrictions
+- 📊 **Interactive Dashboard** - Real-time financial data visualization
+- 💰 **Transaction Management** - Search, filter, and categorize transactions
+- 📈 **Reporting & Analytics** - Charts, trends, and financial insights
+- 🎯 **Default Account Settings** - User-customizable default views
+- 📱 **Responsive Design** - Works on desktop, tablet, and mobile devices
 
 ## 🚀 Quick Start
 
@@ -29,67 +59,109 @@ A robust, production-ready Docker service for synchronizing Mercury Bank account
 
 - **Docker & Docker Compose** (recommended)
 - **Mercury Bank API Key** ([Get yours here](https://mercury.com/developers))
-- **MySQL Database** (or use included Docker setup)
+- **Database Server** - MySQL, PostgreSQL, or other SQLAlchemy-supported database
 
-### Option 1: Simple Single-Account Setup
+### Option 1: Production Deployment (Recommended)
 
-Perfect for getting started quickly or single-organization deployments.
+Use pre-built Docker Hub images for production:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/mercury_bank_download.git
+git clone https://github.com/kumpeapps/mercury_bank_download.git
 cd mercury_bank_download
 
-# Copy environment template
-cp .env.example .env
+# Update docker-compose.yml with your Docker Hub username
+# Edit the image names in docker-compose.yml
 
-# Edit .env with your settings
-nano .env
+# Start all services using published images
+make prod-up
+
+# View logs
+make logs
+
+# Access web interface at http://localhost:5001
+# Access database admin at http://localhost:8080
 ```
 
-**`.env` Configuration:**
-```env
-# Mercury Bank API
-MERCURY_API_KEY=your_mercury_api_key_here
-MERCURY_SANDBOX_MODE=false
+### Option 2: Development Environment
 
-# Database (Docker will create this automatically)
-MYSQL_ROOT_PASSWORD=your_secure_root_password
-MYSQL_PASSWORD=your_secure_user_password
-
-# Sync Settings
-SYNC_DAYS_BACK=30
-SYNC_INTERVAL_MINUTES=60
-RUN_ONCE=false
-```
+Build and run locally for development:
 
 ```bash
-# Start the service
+# Clone the repository
+git clone https://github.com/kumpeapps/mercury_bank_download.git
+cd mercury_bank_download
+
+# Start development environment (builds locally)
+make dev
+
+# View logs
+make logs
+```
+
+### Option 3: Individual Service Deployment
+
+Deploy services separately:
+
+```bash
+# Start only the sync service
+cd sync_app
 docker-compose up -d
 
-# Monitor logs
-docker-compose logs -f mercury-sync
-```
-
-### Option 2: Multi-Account Production Setup
-
-Recommended for organizations managing multiple Mercury Bank accounts.
-
-```bash
-# Set up database and users
-python setup_db.py
-
-# Use production configuration
-cp docker-compose-example.yml docker-compose.yml
-
-# Edit DATABASE_URL in docker-compose.yml
-nano docker-compose.yml
-
-# Deploy
+# Or start only the web interface
+cd web_app
 docker-compose up -d
 ```
 
-For detailed multi-account setup instructions, see [Multi-Account Guide](MULTI_ACCOUNT_README.md).
+### Local Development with MySQL
+
+For local development and testing, use the included MySQL database:
+
+```bash
+# Start all services with local MySQL
+./dev.sh start
+
+# Or start in development mode (with local builds and hot reload)
+./dev.sh start-dev
+
+# View logs
+./dev.sh logs
+
+# Access the applications:
+# - Web Interface: http://localhost:5001
+# - Database Admin (Adminer): http://localhost:8080
+# - MySQL: localhost:3306
+```
+
+### Development Helper Script
+
+The `dev.sh` script provides convenient commands for local development:
+
+```bash
+./dev.sh start          # Start all services
+./dev.sh start-dev      # Start with development builds
+./dev.sh stop           # Stop all services
+./dev.sh logs           # View all logs
+./dev.sh build          # Build local images
+./dev.sh clean          # Clean up containers and volumes
+./dev.sh migrate        # Run database migrations
+./dev.sh encrypt-keys   # Encrypt existing API keys
+./dev.sh test-encrypt   # Test encryption functionality
+./dev.sh shell-sync     # Open shell in sync container
+./dev.sh shell-web      # Open shell in web container
+./dev.sh shell-db       # Open MySQL shell
+```
+
+### Database Configuration
+
+**Local Development** (default):
+- Database: `mysql://mercury_user:mercury_password@localhost:3306/mercury_db`
+- MySQL runs in Docker container
+- Data persisted in Docker volume `mysql_data`
+
+**Production**:
+- Configure `DATABASE_URL` in `docker-compose.yml`
+- Update credentials and connection details as needed
 
 ## 📋 Configuration
 
@@ -282,7 +354,7 @@ GROUP BY ma.id;"
 
 ### Available Images
 
-- **Production**: `justinkumpe/mercury_bank_download:latest`
+- **Production**: `kumpeapps/mercury_bank_download:latest`
 - **Beta**: `mercury_bank_download:latest-beta`
 
 ### Custom Docker Build
@@ -319,7 +391,7 @@ services:
 version: '3.8'
 services:
   mercury-sync:
-    image: justinkumpe/mercury_bank_download:latest
+    image: kumpeapps/mercury_bank_download:latest
     environment:
       - DATABASE_URL=mysql+pymysql://user:pass@external-db:3306/mercury
     restart: unless-stopped
@@ -336,7 +408,7 @@ services:
 
 ```bash
 # Clone repository
-git clone https://github.com/your-username/mercury_bank_download.git
+git clone https://github.com/kumpeapps/mercury_bank_download.git
 cd mercury_bank_download
 
 # Create virtual environment
@@ -361,30 +433,26 @@ python sync.py
 
 ```
 mercury_bank_download/
-├── 📁 models/                    # Database models
-│   ├── __init__.py
-│   ├── base.py                   # Base model and database setup
-│   ├── user.py                   # User model
-│   ├── mercury_account.py        # Mercury account groups
-│   ├── account.py                # Bank accounts
-│   └── transaction.py            # Transactions
-├── 📄 sync.py                    # Main synchronization script
-├── 📄 setup_db.py                # Database initialization
-├── 📄 health_check.py            # Health monitoring
-├── 📁 logs/                      # Application logs
-├── 🐳 Dockerfile                 # Standard Docker image
-├── 🐳 Dockerfile.ubuntu          # Ubuntu-based image
-├── 🐳 docker-compose.yml         # Development compose
-├── 🐳 docker-compose-example.yml # Production example
-├── 🗄️ init.sql                   # Database initialization
-├── 🗄️ migration.sql              # Schema migration
-├── 🗄️ fix_account_schema.sql     # Schema fixes
-├── ⚙️ requirements.txt           # Python dependencies
-├── ⚙️ .env.example               # Environment template
-├── 📖 README.md                  # This file
-├── 📖 MULTI_ACCOUNT_README.md    # Multi-account guide
-├── 📖 DOCKER_TROUBLESHOOTING.md  # Docker help
-└── 📖 LICENSE                    # License information
+├── sync_app/                    # Mercury Bank sync service
+│   ├── models/                  # Database models
+│   ├── migrations/              # Database migrations
+│   ├── sync.py                  # Main sync application
+│   ├── migration_manager.py     # Migration management
+│   ├── Dockerfile              # Sync service container
+│   ├── docker-compose.yml      # Sync service compose
+│   ├── requirements.txt        # Python dependencies
+│   └── README.md               # Sync service documentation
+├── web_app/                     # Web interface
+│   ├── models/                  # Database models (shared schema)
+│   ├── migrations/              # Web app migrations
+│   ├── templates/               # HTML templates
+│   ├── app.py                   # Flask web application
+│   ├── Dockerfile              # Web app container
+│   ├── docker-compose.yml      # Web app compose
+│   ├── requirements.txt        # Python dependencies
+│   └── README.md               # Web app documentation
+├── docker-compose.yml          # Main orchestration file
+└── README.md                   # This file
 ```
 
 ### Testing
@@ -543,9 +611,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/your-username/mercury_bank_download/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/your-username/mercury_bank_download/discussions)
-- 📧 **Email**: support@yourdomain.com
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/kumpeapps/mercury_bank_download/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/kumpeapps/mercury_bank_download/discussions)
+- 📧 **Email**: support@kumpeapps.com
 
 ---
 

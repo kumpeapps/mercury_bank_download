@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Account - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-edit me-2"></i>Edit Account</h1>
+    <a href="{{ url_for('accounts') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Accounts
+    </a>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-university me-2"></i>Account Details</h5>
+            </div>
+            <div class="card-body">
+                <!-- Account Info -->
+                <div class="mb-4">
+                    <h6 class="text-muted">Account Information</h6>
+                    <p class="mb-1"><strong>Name:</strong> {{ account.name }}</p>
+                    <p class="mb-1"><strong>Type:</strong> {{ account.account_type or 'Unknown' }}</p>
+                    <p class="mb-1"><strong>Balance:</strong> ${{ "%.2f"|format(account.balance or 0) }}</p>
+                    <p class="mb-1"><strong>Mercury Account:</strong> {{ mercury_account.name }}</p>
+                </div>
+
+                <hr>
+
+                <!-- Account Information (Read-Only) -->
+                {% if account.nickname %}
+                <div class="mb-3">
+                    <label class="form-label">Account Nickname</label>
+                    <div class="form-control-plaintext bg-light p-2 rounded border">
+                        {{ account.nickname }}
+                    </div>
+                    <div class="form-text text-muted">
+                        <i class="fas fa-info-circle"></i>
+                        This nickname is set by Mercury Bank and cannot be modified.
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Edit Form -->
+                <form method="POST">
+
+                    <hr>
+
+                    <!-- Receipt Requirements Section -->
+                    <div class="mb-4">
+                        <h6 class="text-muted">Receipt Requirements</h6>
+                        <div class="mb-3">
+                            <label for="receipt_required" class="form-label">Receipt Requirement</label>
+                            <select class="form-select" id="receipt_required" name="receipt_required">
+                                <option value="none" {{ 'selected' if account.receipt_required == 'none' else '' }}>
+                                    No receipt required
+                                </option>
+                                <option value="always" {{ 'selected' if account.receipt_required == 'always' else '' }}>
+                                    Always require receipt
+                                </option>
+                                <option value="threshold" {{ 'selected' if account.receipt_required == 'threshold' else '' }}>
+                                    Require receipt above dollar amount
+                                </option>
+                            </select>
+                            <div class="form-text">
+                                Set when receipts are required for transactions on this account.
+                            </div>
+                        </div>
+
+                        <div class="mb-3" id="threshold-input" style="display: {{ 'block' if account.receipt_required == 'threshold' else 'none' }};">
+                            <label for="receipt_threshold" class="form-label">Receipt Threshold ($)</label>
+                            <input type="number" step="0.01" min="0" class="form-control" 
+                                   id="receipt_threshold" name="receipt_threshold" 
+                                   value="{{ account.receipt_threshold or '' }}" 
+                                   placeholder="0.00">
+                            <div class="form-text">
+                                Receipts will be required for transactions with an absolute value at or above this amount.
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <!-- Report Visibility Section -->
+                    <div class="mb-4">
+                        <h6 class="text-muted">Report Visibility</h6>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="exclude_from_reports" name="exclude_from_reports" 
+                                       {{ 'checked' if account.exclude_from_reports else '' }}>
+                                <label class="form-check-label" for="exclude_from_reports">
+                                    <strong>Exclude from Reports</strong>
+                                </label>
+                                <div class="form-text">
+                                    When enabled, this account will be hidden from the reports page and excluded from "All Accounts" filters.
+                                    You can still view transactions for this account on the accounts and transactions pages.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">>
+                        <div class="col-md-6">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-save me-2"></i>Update Account
+                            </button>
+                        </div>
+                        <div class="col-md-6">
+                            <a href="{{ url_for('accounts') }}" class="btn btn-outline-secondary w-100">Cancel</a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const receiptRequiredSelect = document.getElementById('receipt_required');
+    const thresholdInput = document.getElementById('threshold-input');
+    
+    function toggleThresholdInput() {
+        if (receiptRequiredSelect.value === 'threshold') {
+            thresholdInput.style.display = 'block';
+        } else {
+            thresholdInput.style.display = 'none';
+        }
+    }
+    
+    receiptRequiredSelect.addEventListener('change', toggleThresholdInput);
+});
+</script>
+{% endblock %}
