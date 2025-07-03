@@ -2218,11 +2218,14 @@ def add_user_submit():
         db_session.flush()  # Get the user ID
 
         # Assign roles
+        import logging
         from models.role import Role
         for role_name in selected_roles:
             role = db_session.query(Role).filter_by(name=role_name).first()
             if role:
                 new_user.roles.append(role)
+            else:
+                logging.warning(f"Requested role '{role_name}' does not exist in the database. Possible typo or misconfiguration.")
 
         # Create user settings (maintain backward compatibility)
         user_settings = UserSettings(user_id=new_user.id, is_admin=is_admin)
