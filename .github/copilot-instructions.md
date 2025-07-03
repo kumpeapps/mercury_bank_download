@@ -34,6 +34,8 @@ This is a Mercury Bank Integration Platform consisting of two main components:
    - Local development uses docker-compose with MySQL
    - Production deployment uses pre-built images
    - Health checks are implemented for all services
+   - ALWAYS use `./dev.sh rebuild-dev` instead of `docker restart` to apply changes
+   - Never use individual container restarts like `docker restart container-name`
 
 5. **Code Structure**
    - Models are defined in both sync_app/models/ and web_app/models/
@@ -46,14 +48,20 @@ This is a Mercury Bank Integration Platform consisting of two main components:
 - **Database Changes**: Implement via SQLAlchemy migrations
 - **Admin Settings**: Add to SystemSetting initialization in app.py
 - **API Key Management**: Use the encryption utilities for secure storage
+- **Applying Changes**: Always use `./dev.sh rebuild-dev` to rebuild and restart services
 
 ## Development Workflow
 Use the `dev.sh` script for common development tasks such as:
-- Starting/stopping services
+- Starting/stopping services: `./dev.sh start-dev`, `./dev.sh stop`
 - Building images: Use `./dev.sh rebuild-dev` to rebuild and restart development environment
 - Running migrations: Migrations run automatically at container startup
-- Resetting the database
-- Managing admin users
+- Resetting the database: `./dev.sh reset-db`
+- Managing users and roles: 
+  - `./dev.sh assign-role <username> <role>` - Assign roles to users
+  - `./dev.sh list-by-role <role>` - List users with specific roles
+  - `./dev.sh list-roles` - List all available roles
+  - `./dev.sh create-role` - Create new roles
+  - Legacy commands still supported: `./dev.sh promote-admin`, `./dev.sh demote-admin`
 
 ### Migration Guidelines
 - Migrations are performed automatically when containers start

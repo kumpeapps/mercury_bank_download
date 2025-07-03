@@ -54,6 +54,7 @@ def init_db():
     from .user import User
     from .system_setting import SystemSetting
     from .user_settings import UserSettings
+    from .role import Role, user_role_association
 
     engine, _ = create_engine_and_session()
 
@@ -62,14 +63,17 @@ def init_db():
     User.__table__.create(bind=engine, checkfirst=True)
     MercuryAccount.__table__.create(bind=engine, checkfirst=True)
     SystemSetting.__table__.create(bind=engine, checkfirst=True)
+    Role.__table__.create(bind=engine, checkfirst=True)
 
     # 2. Then create tables that depend on User
     UserSettings.__table__.create(bind=engine, checkfirst=True)
 
-    # 3. Then create the association table that depends on both User and MercuryAccount
+    # 3. Then create the association tables
     user_mercury_account_association.create(bind=engine, checkfirst=True)
+    user_role_association.create(bind=engine, checkfirst=True)
+    user_account_access.create(bind=engine, checkfirst=True)
 
-    # 3. Finally create tables that depend on MercuryAccount
+    # 4. Finally create tables that depend on MercuryAccount
     Account.__table__.create(bind=engine, checkfirst=True)
     Transaction.__table__.create(bind=engine, checkfirst=True)
 
@@ -84,6 +88,7 @@ def init_sync_db():
     from .user import User
     from .system_setting import SystemSetting
     from .user_settings import UserSettings
+    from .role import Role, user_role_association
 
     engine, _ = create_engine_and_session()
 

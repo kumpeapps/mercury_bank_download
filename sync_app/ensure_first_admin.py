@@ -14,6 +14,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from models.user import User
 from models.user_settings import UserSettings
+from models.role import Role
 
 
 def ensure_first_user_is_admin():
@@ -32,14 +33,26 @@ def ensure_first_user_is_admin():
         
         print("Checking user admin status...")
         
-        # Check if any admin users exist
-        admin_count = session.query(User).join(UserSettings).filter(UserSettings.is_admin == True).count()
+        # Get or create admin and super-admin roles
+        admin_role = Role.get_or_create(session, "admin", 
+                                        "Can manage Mercury accounts and account settings", 
+                                        is_system_role=True)
+        super_admin_role = Role.get_or_create(session, "super-admin", 
+                                             "Full access to all system features including user management and system settings", 
+                                             is_system_role=True)
+        
+        # Check if any users with admin role exist
+        admin_count = (
+            session.query(User)
+            .filter(User.roles.any(Role.name.in_(["admin", "super-admin"])))
+            .count()
+        )
         
         if admin_count > 0:
-            print(f"Found {admin_count} admin user(s). No action needed.")
+            print(f"Found {admin_count} user(s) with admin/super-admin roles. No action needed.")
             return True
         
-        print("No admin users found. Looking for first user to promote...")
+        print("No users with admin roles found. Looking for first user to promote...")
         
         # Get the first user (oldest by ID)
         first_user = session.query(User).order_by(User.id).first()
@@ -48,9 +61,12 @@ def ensure_first_user_is_admin():
             print("No users found in the system.")
             return True
         
-        print(f"Promoting first user '{first_user.username}' to admin...")
+        print(f"Promoting first user '{first_user.username}' to super-admin...")
         
-        # Check if user has settings
+        # Add super-admin role to first user
+        first_user.add_role(super_admin_role, session)
+        
+        # For backward compatibility, also set is_admin in user settings
         if not first_user.settings:
             # Create settings with admin privileges
             user_settings = UserSettings(user_id=first_user.id, is_admin=True)
@@ -60,7 +76,7 @@ def ensure_first_user_is_admin():
             first_user.settings.is_admin = True
         
         session.commit()
-        print(f"✓ User '{first_user.username}' has been promoted to admin!")
+        print(f"✓ User '{first_user.username}' has been promoted to super-admin!")
         return True
         
     except Exception as e:

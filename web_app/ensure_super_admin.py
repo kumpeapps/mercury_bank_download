@@ -18,6 +18,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from models.user import User
 from models.user_settings import UserSettings
+from models.role import Role
 
 
 def ensure_super_admin():
@@ -49,14 +50,33 @@ def ensure_super_admin():
             print("User must be created first through registration or admin tools")
             return True  # Not an error - user just doesn't exist yet
         
-        # Check if user already has admin privileges
-        if user.is_admin:
-            print(f"✓ Super admin user '{super_admin_username}' already has admin privileges")
+        # Get or create the super-admin role
+        super_admin_role = Role.get_or_create(session, "super-admin", 
+                                            "Full access to all system features including user management and system settings", 
+                                            is_system_role=True)
+        
+        # Check if user already has super-admin role
+        if user.is_super_admin:
+            print(f"✓ User '{super_admin_username}' already has super-admin role")
+            
+            # Ensure user also has admin flag set (for backward compatibility)
+            if not user.settings or not user.settings.is_admin:
+                if not user.settings:
+                    user_settings = UserSettings(user_id=user.id, is_admin=True)
+                    session.add(user_settings)
+                else:
+                    user.settings.is_admin = True
+                session.commit()
+                print(f"✓ Updated user settings for '{super_admin_username}' to include admin flag")
+                
             return True
         
-        print(f"Promoting user '{super_admin_username}' to admin...")
+        print(f"Promoting user '{super_admin_username}' to super-admin...")
         
-        # Ensure user has settings
+        # Add super-admin role
+        user.add_role(super_admin_role, session)
+        
+        # Ensure user has admin flag set (for backward compatibility)
         if not user.settings:
             user_settings = UserSettings(user_id=user.id, is_admin=True)
             session.add(user_settings)
@@ -64,7 +84,7 @@ def ensure_super_admin():
             user.settings.is_admin = True
         
         session.commit()
-        print(f"✓ Super admin user '{super_admin_username}' promoted to admin!")
+        print(f"✓ Super admin user '{super_admin_username}' promoted to super-admin!")
         return True
         
     except Exception as e:

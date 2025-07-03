@@ -85,31 +85,37 @@
                                 Accounts
                             </a>
                         </li>
+                        {% if template_user.can_access_transactions() %}
                         <li class="nav-item">
                             <a class="nav-link {{ 'active' if request.endpoint == 'transactions' }}" href="{{ url_for('transactions') }}">
                                 <i class="fas fa-exchange-alt me-2"></i>
                                 Transactions
                             </a>
                         </li>
+                        {% endif %}
+                        {% if template_user.can_access_reports() %}
                         <li class="nav-item">
                             <a class="nav-link {{ 'active' if request.endpoint == 'reports' }}" href="{{ url_for('reports') }}">
                                 <i class="fas fa-chart-bar me-2"></i>
                                 Reports
                             </a>
                         </li>
+                        {% endif %}
+                        {% if template_user.is_admin or template_user.is_super_admin %}
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('add_mercury_account') }}">
                                 <i class="fas fa-plus me-2"></i>
                                 Add Account
                             </a>
                         </li>
+                        {% endif %}
                         <li class="nav-item">
                             <a class="nav-link {{ 'active' if request.endpoint == 'user_settings' }}" href="{{ url_for('user_settings') }}">
                                 <i class="fas fa-user-cog me-2"></i>
                                 My Settings
                             </a>
                         </li>
-                        {% if template_user.is_admin %}
+                        {% if template_user.is_super_admin %}
                         <li class="nav-item">
                             <a class="nav-link {{ 'active' if request.endpoint == 'admin_settings' }}" href="{{ url_for('admin_settings') }}">
                                 <i class="fas fa-cog me-2"></i>
