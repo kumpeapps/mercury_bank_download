@@ -2205,7 +2205,6 @@ def add_user_submit():
         email = request.form.get("email", "").strip()
         password = request.form.get("password", "")
         confirm_password = request.form.get("confirm_password", "")
-        is_admin = request.form.get("is_admin") == "true"
         selected_roles = request.form.getlist("roles")
 
         # Validate inputs
@@ -2250,7 +2249,9 @@ def add_user_submit():
                 logging.warning(f"Requested role '{role_name}' does not exist in the database. Possible typo or misconfiguration.")
 
         # Create user settings (maintain backward compatibility)
-        user_settings = UserSettings(user_id=new_user.id, is_admin=is_admin)
+        # Set is_admin flag based on assigned roles
+        has_admin_role = any(role_name in ['admin', 'super-admin'] for role_name in selected_roles)
+        user_settings = UserSettings(user_id=new_user.id, is_admin=has_admin_role)
         db_session.add(user_settings)
         db_session.commit()
 
@@ -2264,114 +2265,26 @@ def add_user_submit():
         db_session.close()
 
 
-@app.route("/admin/users/<int:user_id>/promote", methods=["POST"])
-@login_required
-@super_admin_required
-def promote_to_admin(user_id):
-    """Promote a user to admin status."""
-    db_session = Session()
-    try:
-        # Get current user in session to avoid DetachedInstanceError
-        user_in_session = get_current_user_in_session(db_session)
-        if not user_in_session:
-            flash("User session expired. Please log in again.", "error")
-            return redirect(url_for("login"))
-
-        # Get the user to promote
-        user = db_session.query(User).get(user_id)
-        if not user:
-            flash("User not found.", "error")
-            return redirect(url_for("admin_users"))
-
-        # Promote user to admin by adding the admin role
-        from models.role import Role
-        admin_role = db_session.query(Role).filter_by(name='admin').first()
-        if admin_role and not user.has_role('admin'):
-            user.add_role(admin_role, db_session)
-            
-            # Also ensure the user has transactions and reports roles
-            transactions_role = db_session.query(Role).filter_by(name='transactions').first()
-            reports_role = db_session.query(Role).filter_by(name='reports').first()
-            
-            if transactions_role and not user.has_role('transactions'):
-                user.add_role(transactions_role, db_session)
-                
-            if reports_role and not user.has_role('reports'):
-                user.add_role(reports_role, db_session)
-
-            # Update the legacy is_admin flag for backward compatibility
-            if not user.settings:
-                user_settings = UserSettings(user_id=user.id, is_admin=True)
-                db_session.add(user_settings)
-            else:
-                user.settings.is_admin = True
-
-            db_session.commit()
-            flash(f"User '{user.username}' has been promoted to admin!", "success")
-        else:
-            flash(f"User '{user.username}' is already an admin.", "info")
-    except Exception as e:
-        db_session.rollback()
-        flash(f"Error promoting user: {str(e)}", "error")
-
-    return redirect(url_for("admin_users"))
+# Legacy route - deprecated in favor of role-based management
+# @app.route("/admin/users/<int:user_id>/promote", methods=["POST"])
+# @login_required
+# @super_admin_required
+# def promote_to_admin(user_id):
+#     """Promote a user to admin status."""
+#     # This route is deprecated. Use role management instead.
+#     flash("This feature has been deprecated. Please use the role management interface.", "warning")
+#     return redirect(url_for("admin_users"))
 
 
-@app.route("/admin/users/<int:user_id>/demote", methods=["POST"])
-@login_required
-@super_admin_required
-def demote_admin(user_id):
-    """Remove admin privileges from a user."""
-    db_session = Session()
-    try:
-        # Get current user in session to avoid DetachedInstanceError
-        user_in_session = get_current_user_in_session(db_session)
-        if not user_in_session:
-            flash("User session expired. Please log in again.", "error")
-            return redirect(url_for("login"))
-
-        # Get the user to demote
-        user = db_session.query(User).get(user_id)
-        if not user:
-            flash("User not found.", "error")
-            return redirect(url_for("admin_users"))
-
-        # Check if trying to demote self
-        if user.id == user_in_session.id:
-            flash("You cannot remove your own admin privileges.", "error")
-            return redirect(url_for("admin_users"))
-
-        # Don't allow demoting super admins if they're not the current user
-        if user.has_role('super-admin'):
-            flash("Cannot demote a super-admin user.", "error")
-            return redirect(url_for("admin_users"))
-
-        # Check if this is the last admin
-        from models.role import Role, user_role_association
-        admin_role = db_session.query(Role).filter_by(name='admin').first()
-        admin_count = db_session.query(user_role_association).filter_by(role_id=admin_role.id).count()
-        
-        if admin_count <= 1 and user.has_role('admin'):
-            flash("Cannot remove the last admin user.", "error")
-            return redirect(url_for("admin_users"))
-
-        # Remove admin role
-        if user.has_role('admin'):
-            user.remove_role('admin', db_session)
-            
-            # Update the legacy setting for backward compatibility
-            if user.settings:
-                user.settings.is_admin = False
-                
-            db_session.commit()
-            flash(f"Admin privileges removed from user '{user.username}'.", "success")
-        else:
-            flash(f"User '{user.username}' is not an admin.", "info")
-    except Exception as e:
-        db_session.rollback()
-        flash(f"Error demoting user: {str(e)}", "error")
-
-    return redirect(url_for("admin_users"))
+# Legacy route - deprecated in favor of role-based management
+# @app.route("/admin/users/<int:user_id>/demote", methods=["POST"])
+# @login_required
+# @super_admin_required
+# def demote_admin(user_id):
+#     """Remove admin privileges from a user."""
+#     # This route is deprecated. Use role management instead.
+#     flash("This feature has been deprecated. Please use the role management interface.", "warning")
+#     return redirect(url_for("admin_users"))
 
 
 @app.route("/admin/users/<int:user_id>/lock", methods=["POST"])

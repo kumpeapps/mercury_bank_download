@@ -25,22 +25,34 @@ This is a Mercury Bank Integration Platform consisting of two main components:
    - User authentication follows secure practices
    - User inputs must be validated and sanitized
 
-3. **Admin Features**
+3. **Role-Based Access Control**
+   - Use the role-based system for all user management
+   - Legacy admin features (is_admin flag, promote/demote commands) are DEPRECATED
+   - Users must have appropriate roles: "user", "admin", "super-admin", etc.
+   - Use role management interface and commands for user permissions
+
+4. **Admin Features**
    - First user is automatically an admin
    - SUPER_ADMIN_USERNAME environment variable defines a user that always has admin privileges
    - System settings control features like user registration and user deletion
 
-4. **Docker Deployment**
+5. **Docker Deployment**
    - Local development uses docker-compose with MySQL
    - Production deployment uses pre-built images
    - Health checks are implemented for all services
    - ALWAYS use `./dev.sh rebuild-dev` instead of `docker restart` to apply changes
    - Never use individual container restarts like `docker restart container-name`
 
-5. **Code Structure**
+6. **Code Structure**
    - Models are defined in both sync_app/models/ and web_app/models/
    - Both apps share the same database schema
    - Changes to one model directory should be replicated in the other
+
+7. **Legacy Features - DEPRECATED**
+   - Legacy admin_user.py scripts have been archived
+   - MERCURY_API_KEY environment variable is no longer used (API keys stored in database)
+   - Legacy promote-admin, demote-admin, list-admin commands removed
+   - Use role-based system instead of is_admin flag for new development
 
 ## Common Tasks
 
@@ -58,10 +70,12 @@ Use the `dev.sh` script for common development tasks such as:
 - Resetting the database: `./dev.sh reset-db`
 - Managing users and roles: 
   - `./dev.sh assign-role <username> <role>` - Assign roles to users
+  - `./dev.sh remove-role <username> <role>` - Remove roles from users
   - `./dev.sh list-by-role <role>` - List users with specific roles
   - `./dev.sh list-roles` - List all available roles
   - `./dev.sh create-role` - Create new roles
-  - Legacy commands still supported: `./dev.sh promote-admin`, `./dev.sh demote-admin`
+  - `./dev.sh add-user` - Add new users with role selection
+  - `./dev.sh list-users` - List all users and their roles
 
 ### Migration Guidelines
 - Migrations are performed automatically when containers start

@@ -93,31 +93,22 @@
                 </div>
             </div>
 
-            <!-- Admin Privileges Section (Only visible to admins) -->
-            {% if template_user.is_admin %}
+            <!-- Admin Privileges Section (Only visible to super admins) -->
+            {% if current_user.is_super_admin %}
             <div class="card mb-4">
                 <div class="card-header">
                     <h5 class="mb-0">
                         <i class="fas fa-shield-alt me-2"></i>
-                        Admin Privileges
+                        Role Management
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div class="alert alert-warning" role="alert">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        <strong>Warning:</strong> Admin privileges grant full access to all system features including user management, 
-                        Mercury account configuration, and system settings. Only grant admin access to trusted users.
-                    </div>
-                    
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="is_admin" name="is_admin"
-                               {% if settings.is_admin %}checked{% endif %}>
-                        <label class="form-check-label" for="is_admin">
-                            <strong>Grant Admin Privileges</strong>
-                        </label>
-                        <div class="form-text">
-                            Admin users can manage other users, configure Mercury accounts, and access all system features.
-                        </div>
+                    <div class="alert alert-info" role="alert">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Note:</strong> User roles are managed through the role management interface. 
+                        <a href="{{ url_for('edit_user_roles', user_id=template_user.id) }}" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-user-cog"></i> Manage Roles
+                        </a>
                     </div>
                 </div>
             </div>

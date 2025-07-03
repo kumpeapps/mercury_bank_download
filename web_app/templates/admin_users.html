@@ -81,16 +81,10 @@
                                     <td>{{ admin.username }}</td>
                                     <td>{{ admin.email }}</td>
                                     <td>
-                                        {% if not users_externally_managed %}
-                                        <form method="post" action="{{ url_for('demote_admin', user_id=admin.id) }}" class="d-inline">
-                                            <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Are you sure you want to remove admin privileges from {{ admin.username }}?')">
-                                                <i class="fas fa-user-minus"></i> Remove Admin
-                                            </button>
-                                        </form>
-                                        {% else %}
-                                        <span class="text-muted">
-                                            <i class="fas fa-lock"></i> External Management
-                                        </span>
+                                        {% if current_user.is_super_admin %}
+                                        <a href="{{ url_for('edit_user_roles', user_id=admin.id) }}" class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-user-cog"></i> Manage Roles
+                                        </a>
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -203,19 +197,7 @@
                                         </a>
                                         {% endif %}
                                         
-                                        {% if not user.is_admin %}
-                                        <form method="post" action="{{ url_for('promote_to_admin', user_id=user.id) }}" class="d-inline">
-                                            <button type="submit" class="btn btn-sm btn-success">
-                                                <i class="fas fa-user-shield"></i> Make Admin
-                                            </button>
-                                        </form>
-                                        {% else %}
-                                        <form method="post" action="{{ url_for('demote_admin', user_id=user.id) }}" class="d-inline">
-                                            <button type="submit" class="btn btn-sm btn-warning">
-                                                <i class="fas fa-user-minus"></i> Remove Admin
-                                            </button>
-                                        </form>
-                                        {% endif %}
+
                                         
                                         {% if not users_externally_managed %}
                                         <form method="post" action="{{ url_for('delete_user_by_id', user_id=user.id) }}" class="d-inline">
@@ -401,20 +383,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     </a> `;
         {% endif %}
         
-        // Admin promotion/demotion
-        if (!user.isAdmin) {
-            actions += `<form method="post" action="/admin/users/${user.id}/promote" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-success">
-                                <i class="fas fa-user-shield"></i> Make Admin
-                            </button>
-                        </form> `;
-        } else {
-            actions += `<form method="post" action="/admin/users/${user.id}/demote" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-warning">
-                                <i class="fas fa-user-minus"></i> Remove Admin
-                            </button>
-                        </form> `;
-        }
         
         {% if not users_externally_managed %}
         // Delete button

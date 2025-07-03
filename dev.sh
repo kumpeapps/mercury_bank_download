@@ -43,6 +43,9 @@ show_usage() {
     echo "  toggle-signup  - Enable/disable user registration"
     echo "  toggle-user-deletion - Enable/disable prevention of user deletion"
     echo ""
+    echo "Command-Line Interface:"
+    echo "  cli-gui        - Launch text-based GUI for sync service"
+    echo ""
 }
 
 # Check if docker-compose is available
@@ -165,12 +168,12 @@ case "$1" in
     
     "create-admin")
         echo "Creating first admin user..."
-        docker-compose exec web-app python admin_user.py.new create
+        docker-compose exec web-app python admin_user.py create
         ;;
     
     "create-super-admin")
         echo "Creating first super-admin user..."
-        docker-compose exec web-app python admin_user.py.new create_super_admin
+        docker-compose exec web-app python admin_user.py create_super_admin
         ;;
     
     "assign-role")
@@ -179,7 +182,7 @@ case "$1" in
             exit 1
         fi
         echo "Assigning role '$3' to user '$2'..."
-        docker-compose exec web-app python admin_user.py.new assign_role "$2" "$3"
+        docker-compose exec web-app python admin_user.py assign_role "$2" "$3"
         ;;
     
     "remove-role")
@@ -188,7 +191,7 @@ case "$1" in
             exit 1
         fi
         echo "Removing role '$3' from user '$2'..."
-        docker-compose exec web-app python admin_user.py.new remove_role "$2" "$3"
+        docker-compose exec web-app python admin_user.py remove_role "$2" "$3"
         ;;
     
     "list-by-role")
@@ -197,17 +200,17 @@ case "$1" in
             exit 1
         fi
         echo "Listing users with role '$2'..."
-        docker-compose exec web-app python admin_user.py.new list_by_role "$2"
+        docker-compose exec web-app python admin_user.py list_by_role "$2"
         ;;
     
     "list-roles")
         echo "Listing all available roles..."
-        docker-compose exec web-app python admin_user.py.new list_roles
+        docker-compose exec web-app python admin_user.py list_roles
         ;;
     
     "create-role")
         echo "Creating new role..."
-        docker-compose exec web-app python admin_user.py.new create_role
+        docker-compose exec web-app python admin_user.py create_role
         ;;
     
     "ensure-admin")
@@ -217,7 +220,7 @@ case "$1" in
     
     "add-user")
         echo "Creating a new user account..."
-        docker-compose exec web-app python admin_user.py.new add
+        docker-compose exec web-app python admin_user.py add
         ;;
     
     "delete-user")
@@ -226,51 +229,27 @@ case "$1" in
             exit 1
         fi
         echo "Deleting user account '$2'..."
-        docker-compose exec web-app python admin_user.py.new delete "$2"
+        docker-compose exec web-app python admin_user.py delete "$2"
         ;;
     
     "list-users")
         echo "Listing all users..."
-        docker-compose exec web-app python admin_user.py.new list
+        docker-compose exec web-app python admin_user.py list
         ;;
     
     "toggle-signup")
         echo "Toggling user registration..."
-        docker-compose exec web-app python admin_user.py.new toggle_signup
+        docker-compose exec web-app python admin_user.py toggle_signup
         ;;
     
     "toggle-user-deletion")
         echo "Toggling user deletion prevention..."
-        docker-compose exec web-app python admin_user.py.new toggle_user_deletion
+        docker-compose exec web-app python admin_user.py toggle_user_deletion
         ;;
     
-    # Legacy command aliases for backward compatibility
-    "promote-admin")
-        if [ -z "$2" ]; then
-            echo "Usage: $0 promote-admin <username>"
-            echo "Note: This command is deprecated. Use 'assign-role <username> admin' instead."
-            exit 1
-        fi
-        echo "Legacy command: Promoting user '$2' to admin..."
-        echo "Note: This command is deprecated. Use 'assign-role $2 admin' instead."
-        docker-compose exec web-app python admin_user.py.new assign_role "$2" "admin"
-        ;;
-    
-    "demote-admin")
-        if [ -z "$2" ]; then
-            echo "Usage: $0 demote-admin <username>"
-            echo "Note: This command is deprecated. Use 'remove-role <username> admin' instead."
-            exit 1
-        fi
-        echo "Legacy command: Removing admin privileges from user '$2'..."
-        echo "Note: This command is deprecated. Use 'remove-role $2 admin' instead."
-        docker-compose exec web-app python admin_user.py.new remove_role "$2" "admin"
-        ;;
-    
-    "list-admin")
-        echo "Legacy command: Listing admin users..."
-        echo "Note: This command is deprecated. Use 'list-by-role admin' instead."
-        docker-compose exec web-app python admin_user.py.new list_by_role "admin"
+    "cli-gui")
+        echo "Starting command-line GUI for sync service..."
+        docker-compose exec mercury-sync python cli_gui.py
         ;;
     
     "shell-sync")

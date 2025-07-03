@@ -169,7 +169,6 @@ The `dev.sh` script provides convenient commands for local development:
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `MERCURY_API_KEY` | Mercury Bank API key | - | Single-account only |
 | `MERCURY_API_URL` | Mercury API endpoint | `https://api.mercury.com` | No |
 | `MERCURY_SANDBOX_MODE` | Use sandbox environment | `false` | No |
 | `DATABASE_URL` | Complete database connection string | - | Yes |
@@ -409,7 +408,6 @@ services:
     build: .
     environment:
       - DATABASE_URL=mysql+pymysql://mercury:password@db:3306/mercury_bank
-      - MERCURY_API_KEY=${MERCURY_API_KEY}
       - SYNC_INTERVAL_MINUTES=5
     volumes:
       - ./logs:/app/logs
@@ -518,7 +516,7 @@ python setup_db.py
 
 # 4. Update configuration
 cp docker-compose-example.yml docker-compose.yml
-# Edit DATABASE_URL and remove MERCURY_API_KEY
+# Edit DATABASE_URL and configure Mercury accounts via web interface
 
 # 5. Restart services
 docker-compose down
@@ -540,9 +538,6 @@ docker-compose up -d
 ### Debugging Commands
 
 ```bash
-# Check API connectivity
-curl -H "Authorization: Bearer $MERCURY_API_KEY" https://api.mercury.com/api/v1/accounts
-
 # Test database connection
 docker-compose exec mercury-sync python -c "
 from models.base import create_engine_and_session
@@ -550,11 +545,14 @@ engine, session = create_engine_and_session()
 print('Database connection successful')
 "
 
-# Validate configuration
-docker-compose exec mercury-sync python -c "
-import os
-print('API Key:', os.getenv('MERCURY_API_KEY', 'Not set'))
-print('Database URL:', os.getenv('DATABASE_URL', 'Not set'))
+# Check Mercury accounts configuration
+docker-compose exec web-app python -c "
+from models.mercury_account import MercuryAccount
+from models.base import create_engine_and_session
+engine, session = create_engine_and_session()
+accounts = session.query(MercuryAccount).all()
+print(f'Configured Mercury accounts: {len(accounts)}')
+for acc in accounts: print(f'- {acc.name}: {\"Active\" if acc.is_active else \"Inactive\"}')
 "
 ```
 
