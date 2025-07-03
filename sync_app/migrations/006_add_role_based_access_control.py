@@ -42,6 +42,7 @@ def upgrade(engine=None):
         # Create roles table
         with engine.connect() as conn:
             conn.execute(CreateTable(roles_table))
+            conn.commit()
             print("Created roles table")
             
             # Insert default roles
@@ -61,18 +62,63 @@ def upgrade(engine=None):
     
     # Only create the user_roles table if it doesn't exist
     if not inspector.has_table("user_roles"):
-        # Create a new connection and execute SQL directly since we're having issues with metadata
+        # First, let's check the structure of the users table to ensure compatibility
         with engine.connect() as conn:
+            # Get the users table structure
+            users_columns = inspector.get_columns("users")
+            users_id_type = None
+            for col in users_columns:
+                if col["name"] == "id":
+                    users_id_type = col["type"]
+                    break
+            
+            # Get the roles table structure
+            roles_columns = inspector.get_columns("roles")
+            roles_id_type = None
+            for col in roles_columns:
+                if col["name"] == "id":
+                    roles_id_type = col["type"]
+                    break
+            
+            print(f"Users.id type: {users_id_type}")
+            print(f"Roles.id type: {roles_id_type}")
+            
+            # Create user_roles table with proper column types
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS user_roles (
                     user_id INT NOT NULL,
                     role_id INT NOT NULL,
                     PRIMARY KEY (user_id, role_id),
-                    CONSTRAINT fk_user_roles_user_id FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-                    CONSTRAINT fk_user_roles_role_id FOREIGN KEY (role_id) REFERENCES roles (id) ON DELETE CASCADE
+                    INDEX idx_user_roles_user_id (user_id),
+                    INDEX idx_user_roles_role_id (role_id)
                 )
             """))
             conn.commit()
+            print("Created user_roles table without foreign keys first")
+            
+            # Now add the foreign key constraints
+            try:
+                conn.execute(text("""
+                    ALTER TABLE user_roles 
+                    ADD CONSTRAINT fk_user_roles_user_id 
+                    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+                """))
+                conn.commit()
+                print("Added foreign key constraint for user_id")
+            except Exception as e:
+                print(f"Warning: Could not add user_id foreign key: {e}")
+            
+            try:
+                conn.execute(text("""
+                    ALTER TABLE user_roles 
+                    ADD CONSTRAINT fk_user_roles_role_id 
+                    FOREIGN KEY (role_id) REFERENCES roles (id) ON DELETE CASCADE
+                """))
+                conn.commit()
+                print("Added foreign key constraint for role_id")
+            except Exception as e:
+                print(f"Warning: Could not add role_id foreign key: {e}")
+                
             print("Created user_roles table")
     
     # Grant existing admin users the admin role
