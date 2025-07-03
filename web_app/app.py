@@ -26,12 +26,14 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from sqlalchemy import create_engine, func, extract, text
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timedelta
+from functools import wraps
 import os
 import json
 import csv
 import io
 import logging
 from collections import defaultdict
+from functools import wraps
 
 # Import models
 from models.user import User
@@ -262,6 +264,57 @@ def load_user(user_id):
         return None
     finally:
         db_session.close()
+
+
+@app.before_request
+def check_user_permissions():
+    """
+    Check if the current user still has valid permissions on every request.
+    If a logged-in user loses the 'user' role or gains the 'locked' role,
+    they will be automatically logged out.
+    """
+    # Skip permission checks for certain routes
+    skip_routes = ['login', 'register', 'static', 'logout', 'health', 'index']
+    
+    # Check if we're accessing a route that should be skipped
+    if request.endpoint in skip_routes:
+        return
+    
+    # Only check permissions if user is logged in
+    if current_user.is_authenticated:
+        db_session = Session()
+        try:
+            # Re-query the user to get fresh data from the database
+            fresh_user = db_session.query(User).get(current_user.id)
+            
+            if fresh_user:
+                # Check if user has been locked
+                if fresh_user.has_role('locked'):
+                    logger.info(f"User {fresh_user.username} has been locked - logging out")
+                    logout_user()
+                    flash("Your account has been locked. Please contact an administrator.", "error")
+                    return redirect(url_for("login"))
+                
+                # Check if user no longer has the user role
+                if not fresh_user.has_role('user'):
+                    logger.info(f"User {fresh_user.username} no longer has 'user' role - logging out")
+                    logout_user()
+                    flash("Your account permissions have changed. Please contact an administrator.", "error")
+                    return redirect(url_for("login"))
+                    
+            else:
+                # User not found in database - log them out
+                logger.info(f"User {current_user.id} not found in database - logging out")
+                logout_user()
+                flash("Your account could not be found. Please contact an administrator.", "error")
+                return redirect(url_for("login"))
+                
+        except Exception as e:
+            logger.error(f"Error checking user permissions: {e}")
+            # In case of database errors, don't log out the user unless it's critical
+            pass
+        finally:
+            db_session.close()
 
 
 # Helper functions for account access control
@@ -654,6 +707,72 @@ def export_reports_data(table_data, format_type):
         return export_excel(export_data, "category_reports")
 
 
+# Decorators
+def transactions_required(f):
+    """Decorator to require transactions access for a route."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Get user from database to avoid DetachedInstanceError
+        db_session = Session()
+        try:
+            user = db_session.query(User).get(current_user.id)
+            if not user or not user.can_access_transactions():
+                flash("Access denied. You don't have permission to view transactions.", "error")
+                return redirect(url_for("dashboard"))
+        finally:
+            db_session.close()
+        return f(*args, **kwargs)
+    return decorated_function
+
+def reports_required(f):
+    """Decorator to require reports access for a route."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Get user from database to avoid DetachedInstanceError
+        db_session = Session()
+        try:
+            user = db_session.query(User).get(current_user.id)
+            if not user or not user.can_access_reports():
+                flash("Access denied. You don't have permission to view reports.", "error")
+                return redirect(url_for("dashboard"))
+        finally:
+            db_session.close()
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    """Decorator to require admin access for a route."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Get user from database to avoid DetachedInstanceError
+        db_session = Session()
+        try:
+            user = db_session.query(User).get(current_user.id)
+            if not user or (not user.is_admin and not user.is_super_admin):
+                flash("Access denied. Admin privileges required.", "error")
+                return redirect(url_for("dashboard"))
+        finally:
+            db_session.close()
+        return f(*args, **kwargs)
+    return decorated_function
+
+def super_admin_required(f):
+    """Decorator to require super admin access for a route."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Get user from database to avoid DetachedInstanceError
+        db_session = Session()
+        try:
+            user = db_session.query(User).get(current_user.id)
+            if not user or not user.is_super_admin:
+                flash("Access denied. Super admin privileges required.", "error")
+                return redirect(url_for("dashboard"))
+        finally:
+            db_session.close()
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 # Routes
 @app.route("/")
 def index():
@@ -673,6 +792,24 @@ def login():
             user = db_session.query(User).filter_by(username=username).first()
 
             if user and user.check_password(password):
+                # Check if user has the locked role
+                if user.has_role('locked'):
+                    flash("Your account has been locked. Please contact an administrator.", "error")
+                    return render_template(
+                        "login.html",
+                        signup_enabled=is_signup_enabled(),
+                        users_externally_managed=os.environ.get("USERS_EXTERNALLY_MANAGED", "false").lower() == "true"
+                    )
+                
+                # Check if user has the user role (required for basic access)
+                if not user.has_role('user'):
+                    flash("Your account does not have the required permissions. Please contact an administrator.", "error")
+                    return render_template(
+                        "login.html",
+                        signup_enabled=is_signup_enabled(),
+                        users_externally_managed=os.environ.get("USERS_EXTERNALLY_MANAGED", "false").lower() == "true"
+                    )
+                
                 login_user(user)
                 flash("Logged in successfully!", "success")
                 return redirect(url_for("dashboard"))
@@ -956,6 +1093,7 @@ def accounts():
 
 @app.route("/add_mercury_account", methods=["GET", "POST"])
 @login_required
+@admin_required
 def add_mercury_account():
     if request.method == "POST":
         name = request.form["name"]
@@ -988,6 +1126,7 @@ def add_mercury_account():
 
 @app.route("/edit_mercury_account/<int:account_id>", methods=["GET", "POST"])
 @login_required
+@admin_required
 def edit_mercury_account(account_id):
     db_session = Session()
     try:
@@ -1035,6 +1174,7 @@ def edit_mercury_account(account_id):
 
 @app.route("/delete_mercury_account/<int:account_id>", methods=["POST"])
 @login_required
+@admin_required
 def delete_mercury_account(account_id):
     db_session = Session()
     try:
@@ -1068,6 +1208,7 @@ def delete_mercury_account(account_id):
 
 @app.route("/transactions")
 @login_required
+@transactions_required
 def transactions():
     page = request.args.get("page", 1, type=int)
     account_id = request.args.get("account_id")
@@ -1271,6 +1412,7 @@ def transactions():
 
 @app.route("/reports")
 @login_required
+@reports_required
 def reports():
     month_filter = request.args.get("month")  # Format: YYYY-MM
     mercury_account_id = request.args.get("mercury_account_id", type=int)
@@ -1714,6 +1856,7 @@ def expense_breakdown():
 
 @app.route("/admin/settings", methods=["GET", "POST"])
 @login_required
+@super_admin_required
 def admin_settings():
     """Admin page for managing system settings."""
     db_session = Session()
@@ -1782,6 +1925,7 @@ def admin_settings():
 
 @app.route("/admin/mercury_access/<int:mercury_account_id>", methods=["GET", "POST"])
 @login_required
+@admin_required
 def manage_mercury_access(mercury_account_id):
     """Admin page for managing user access to Mercury accounts and specific accounts within them."""
     db_session = Session()
@@ -1930,6 +2074,7 @@ def manage_mercury_access(mercury_account_id):
 
 @app.route("/admin/users", methods=["GET"])
 @login_required
+@super_admin_required
 def admin_users():
     """Admin page for managing users."""
     db_session = Session()
@@ -1967,6 +2112,7 @@ def admin_users():
             admin_users=admin_users,
             prevent_user_deletion=prevent_user_deletion,
             users_externally_managed=users_externally_managed,
+            current_user=user_in_session,
         )
     finally:
         db_session.close()
@@ -1974,6 +2120,7 @@ def admin_users():
 
 @app.route("/admin/users/add", methods=["GET"])
 @login_required
+@super_admin_required
 def add_user_form():
     """Display form to add a new user."""
     db_session = Session()
@@ -1997,13 +2144,18 @@ def add_user_form():
             flash("User creation is not allowed when users are externally managed.", "error")
             return redirect(url_for("admin_users"))
 
-        return render_template("add_user.html")
+        # Get available roles
+        from models.role import Role
+        available_roles = db_session.query(Role).order_by(Role.name).all()
+
+        return render_template("add_user.html", available_roles=available_roles)
     finally:
         db_session.close()
 
 
 @app.route("/admin/users/add", methods=["POST"])
 @login_required
+@super_admin_required
 def add_user_submit():
     """Process form submission to add a new user."""
     db_session = Session()
@@ -2032,6 +2184,7 @@ def add_user_submit():
         password = request.form.get("password", "")
         confirm_password = request.form.get("confirm_password", "")
         is_admin = request.form.get("is_admin") == "true"
+        selected_roles = request.form.getlist("roles")
 
         # Validate inputs
         if not username or not email or not password:
@@ -2040,6 +2193,11 @@ def add_user_submit():
 
         if password != confirm_password:
             flash("Passwords do not match.", "error")
+            return redirect(url_for("add_user_form"))
+
+        # Ensure user role is selected (required for basic access)
+        if 'user' not in selected_roles:
+            flash("The 'user' role is required for basic access.", "error")
             return redirect(url_for("add_user_form"))
 
         # Check if user already exists
@@ -2059,12 +2217,19 @@ def add_user_submit():
         db_session.add(new_user)
         db_session.flush()  # Get the user ID
 
-        # Create user settings
+        # Assign roles
+        from models.role import Role
+        for role_name in selected_roles:
+            role = db_session.query(Role).filter_by(name=role_name).first()
+            if role:
+                new_user.roles.append(role)
+
+        # Create user settings (maintain backward compatibility)
         user_settings = UserSettings(user_id=new_user.id, is_admin=is_admin)
         db_session.add(user_settings)
         db_session.commit()
 
-        flash(f"User '{username}' created successfully!", "success")
+        flash(f"User '{username}' created successfully with roles: {', '.join(selected_roles)}!", "success")
         return redirect(url_for("admin_users"))
     except Exception as e:
         db_session.rollback()
@@ -2076,6 +2241,7 @@ def add_user_submit():
 
 @app.route("/admin/users/<int:user_id>/promote", methods=["POST"])
 @login_required
+@super_admin_required
 def promote_to_admin(user_id):
     """Promote a user to admin status."""
     db_session = Session()
@@ -2086,26 +2252,39 @@ def promote_to_admin(user_id):
             flash("User session expired. Please log in again.", "error")
             return redirect(url_for("login"))
 
-        # Check if user is admin
-        if not user_in_session.is_admin:
-            flash("Access denied. Admin privileges required.", "error")
-            return redirect(url_for("dashboard"))
-
         # Get the user to promote
         user = db_session.query(User).get(user_id)
         if not user:
             flash("User not found.", "error")
             return redirect(url_for("admin_users"))
 
-        # Promote user to admin
-        if not user.settings:
-            user_settings = UserSettings(user_id=user.id, is_admin=True)
-            db_session.add(user_settings)
-        else:
-            user.settings.is_admin = True
+        # Promote user to admin by adding the admin role
+        from models.role import Role
+        admin_role = db_session.query(Role).filter_by(name='admin').first()
+        if admin_role and not user.has_role('admin'):
+            user.add_role(admin_role, db_session)
+            
+            # Also ensure the user has transactions and reports roles
+            transactions_role = db_session.query(Role).filter_by(name='transactions').first()
+            reports_role = db_session.query(Role).filter_by(name='reports').first()
+            
+            if transactions_role and not user.has_role('transactions'):
+                user.add_role(transactions_role, db_session)
+                
+            if reports_role and not user.has_role('reports'):
+                user.add_role(reports_role, db_session)
 
-        db_session.commit()
-        flash(f"User '{user.username}' has been promoted to admin!", "success")
+            # Update the legacy is_admin flag for backward compatibility
+            if not user.settings:
+                user_settings = UserSettings(user_id=user.id, is_admin=True)
+                db_session.add(user_settings)
+            else:
+                user.settings.is_admin = True
+
+            db_session.commit()
+            flash(f"User '{user.username}' has been promoted to admin!", "success")
+        else:
+            flash(f"User '{user.username}' is already an admin.", "info")
     except Exception as e:
         db_session.rollback()
         flash(f"Error promoting user: {str(e)}", "error")
@@ -2115,6 +2294,7 @@ def promote_to_admin(user_id):
 
 @app.route("/admin/users/<int:user_id>/demote", methods=["POST"])
 @login_required
+@super_admin_required
 def demote_admin(user_id):
     """Remove admin privileges from a user."""
     db_session = Session()
@@ -2124,11 +2304,6 @@ def demote_admin(user_id):
         if not user_in_session:
             flash("User session expired. Please log in again.", "error")
             return redirect(url_for("login"))
-
-        # Check if user is admin
-        if not user_in_session.is_admin:
-            flash("Access denied. Admin privileges required.", "error")
-            return redirect(url_for("dashboard"))
 
         # Get the user to demote
         user = db_session.query(User).get(user_id)
@@ -2141,24 +2316,32 @@ def demote_admin(user_id):
             flash("You cannot remove your own admin privileges.", "error")
             return redirect(url_for("admin_users"))
 
+        # Don't allow demoting super admins if they're not the current user
+        if user.has_role('super-admin'):
+            flash("Cannot demote a super-admin user.", "error")
+            return redirect(url_for("admin_users"))
+
         # Check if this is the last admin
-        admin_count = (
-            db_session.query(User)
-            .join(UserSettings)
-            .filter(UserSettings.is_admin == True)
-            .count()
-        )
-        if admin_count <= 1:
+        from models.role import Role, user_role_association
+        admin_role = db_session.query(Role).filter_by(name='admin').first()
+        admin_count = db_session.query(user_role_association).filter_by(role_id=admin_role.id).count()
+        
+        if admin_count <= 1 and user.has_role('admin'):
             flash("Cannot remove the last admin user.", "error")
             return redirect(url_for("admin_users"))
 
-        # Demote user
-        if user.settings:
-            user.settings.is_admin = False
+        # Remove admin role
+        if user.has_role('admin'):
+            user.remove_role('admin', db_session)
+            
+            # Update the legacy setting for backward compatibility
+            if user.settings:
+                user.settings.is_admin = False
+                
             db_session.commit()
             flash(f"Admin privileges removed from user '{user.username}'.", "success")
         else:
-            flash("User has no settings record.", "error")
+            flash(f"User '{user.username}' is not an admin.", "info")
     except Exception as e:
         db_session.rollback()
         flash(f"Error demoting user: {str(e)}", "error")
@@ -2166,8 +2349,85 @@ def demote_admin(user_id):
     return redirect(url_for("admin_users"))
 
 
+@app.route("/admin/users/<int:user_id>/lock", methods=["POST"])
+@login_required
+@super_admin_required
+def lock_user(user_id):
+    """Lock a user's account."""
+    db_session = Session()
+    try:
+        # Get current user in session to avoid DetachedInstanceError
+        user_in_session = get_current_user_in_session(db_session)
+        if not user_in_session:
+            flash("User session expired. Please log in again.", "error")
+            return redirect(url_for("login"))
+
+        # Get the user to lock
+        user = db_session.query(User).filter_by(id=user_id).first()
+        if not user:
+            flash("User not found.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Don't allow locking of super admins
+        if user.is_super_admin:
+            flash("Cannot lock a super admin account.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Don't allow locking of self
+        if user.id == current_user.id:
+            flash("You cannot lock your own account.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Add the locked role
+        if not user.has_role('locked'):
+            user.add_role('locked')
+            db_session.commit()
+            flash(f"User '{user.username}' has been locked.", "success")
+        else:
+            flash(f"User '{user.username}' is already locked.", "info")
+    except Exception as e:
+        db_session.rollback()
+        flash(f"Error locking user: {str(e)}", "error")
+
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<int:user_id>/unlock", methods=["POST"])
+@login_required
+@super_admin_required
+def unlock_user(user_id):
+    """Unlock a user's account."""
+    db_session = Session()
+    try:
+        # Get current user in session to avoid DetachedInstanceError
+        user_in_session = get_current_user_in_session(db_session)
+        if not user_in_session:
+            flash("User session expired. Please log in again.", "error")
+            return redirect(url_for("login"))
+
+        # Get the user to unlock
+        user = db_session.query(User).filter_by(id=user_id).first()
+        if not user:
+            flash("User not found.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Remove the locked role
+        if user.has_role('locked'):
+            user.remove_role('locked')
+            db_session.commit()
+            flash(f"User '{user.username}' has been unlocked.", "success")
+        else:
+            flash(f"User '{user.username}' is not locked.", "info")
+    except Exception as e:
+        db_session.rollback()
+        flash(f"Error unlocking user: {str(e)}", "error")
+
+    return redirect(url_for("admin_users"))
+
+
 @app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
 @login_required
+@super_admin_required
 def delete_user_by_id(user_id):
     """Delete a user from the system."""
     db_session = Session()
@@ -2177,11 +2437,6 @@ def delete_user_by_id(user_id):
         if not user_in_session:
             flash("User session expired. Please log in again.", "error")
             return redirect(url_for("login"))
-
-        # Check if user is admin
-        if not user_in_session.is_admin:
-            flash("Access denied. Admin privileges required.", "error")
-            return redirect(url_for("dashboard"))
 
         # Check if users are externally managed - if yes, always prevent deletion
         if SystemSetting.get_bool_value(
@@ -2236,6 +2491,73 @@ def delete_user_by_id(user_id):
         flash(f"Error deleting user: {str(e)}", "error")
 
     return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<int:user_id>/roles", methods=["GET", "POST"])
+@login_required
+@super_admin_required
+def edit_user_roles(user_id):
+    """Edit roles for a user - super-admin only."""
+    db_session = Session()
+    try:
+        # Get current user in session to avoid DetachedInstanceError
+        user_in_session = get_current_user_in_session(db_session)
+        if not user_in_session:
+            flash("User session expired. Please log in again.", "error")
+            return redirect(url_for("login"))
+
+        # Check if user is super-admin
+        if not user_in_session.is_super_admin:
+            flash("Access denied. Super-admin privileges required.", "error")
+            return redirect(url_for("dashboard"))
+
+        # Check if users are externally managed
+        users_externally_managed = SystemSetting.get_bool_value(
+            db_session, "users_externally_managed", default=False
+        )
+        if users_externally_managed:
+            flash("Role management is not allowed when users are externally managed.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Get the user to edit
+        user = db_session.query(User).get(user_id)
+        if not user:
+            flash("User not found.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Get available roles
+        from models.role import Role
+        available_roles = db_session.query(Role).order_by(Role.name).all()
+
+        if request.method == "POST":
+            selected_roles = request.form.getlist("roles")
+
+            # Validate that 'user' role is selected (required for basic access)
+            if 'user' not in selected_roles and not user.is_super_admin:
+                flash("The 'user' role is required for basic access. Super-admin users are exempt from this requirement.", "warning")
+                return render_template("edit_user_roles.html", user=user, available_roles=available_roles)
+
+            # Clear existing roles
+            user.roles.clear()
+
+            # Assign new roles
+            for role_name in selected_roles:
+                role = db_session.query(Role).filter_by(name=role_name).first()
+                if role:
+                    user.roles.append(role)
+
+            db_session.commit()
+            flash(f"Roles updated successfully for user '{user.username}'. Current roles: {', '.join(selected_roles)}", "success")
+            return redirect(url_for("admin_users"))
+
+        return render_template("edit_user_roles.html", user=user, available_roles=available_roles)
+
+    except Exception as e:
+        db_session.rollback()
+        flash(f"Error updating user roles: {str(e)}", "error")
+        return redirect(url_for("admin_users"))
+    finally:
+        db_session.close()
 
 
 @app.route("/health")
@@ -2430,6 +2752,7 @@ def get_current_user_in_session(db_session):
 
 @app.route("/edit_account/<account_id>", methods=["GET", "POST"])
 @login_required
+@admin_required
 def edit_account(account_id):
     db_session = Session()
     try:

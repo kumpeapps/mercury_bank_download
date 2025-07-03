@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 from werkzeug.security import generate_password_hash, check_password_hash
 from passlib.hash import phpass
 from .base import Base, user_mercury_account_association, user_account_access
+from .role import user_role_association
 
 
 class User(Base):
@@ -65,6 +66,13 @@ class User(Base):
         back_populates="users",
     )
 
+    # Many-to-many relationship with Roles
+    roles = relationship(
+        "Role",
+        secondary=user_role_association,
+        back_populates="users",
+    )
+
     # Many-to-many relationship with Account for granular access control
     # When this relationship has entries, it restricts user access to only those specific accounts
     # If empty, user has access to all accounts in their mercury_accounts (default behavior)
@@ -119,32 +127,181 @@ class User(Base):
         Returns:
             bool: True if user has admin privileges, False otherwise
         """
+        # Check first for the admin role
+        if self.has_role('admin'):
+            return True
+        
+        # Fallback to legacy settings-based admin check
         if not self.settings:
             return False
         return self.settings.is_admin
-
-    def set_admin_status(self, is_admin, modifier_user=None):
+        
+    @property
+    def is_super_admin(self):
         """
-        Set the admin status for this user. Only admins can modify admin status.
+        Check if the user has super admin privileges.
+        
+        Returns:
+            bool: True if user has super admin privileges, False otherwise
+        """
+        return self.has_role('super-admin')
+        
+    def has_role(self, role_name):
+        """
+        Check if the user has a specific role.
         
         Args:
-            is_admin (bool): Whether the user should have admin privileges
-            modifier_user (User, optional): The user making the change (must be admin)
+            role_name (str): The name of the role to check for
             
         Returns:
-            bool: True if the change was successful, False if not authorized
+            bool: True if user has the role, False otherwise
         """
-        # Only admins can modify admin status
-        if modifier_user and not modifier_user.is_admin:
+        return any(role.name == role_name for role in self.roles)
+        
+    def has_any_role(self, role_names):
+        """
+        Check if the user has any of the specified roles.
+        
+        Args:
+            role_names (list): A list of role names to check for
+            
+        Returns:
+            bool: True if user has any of the roles, False otherwise
+        """
+        if not role_names:
+            return False
+        return any(self.has_role(role_name) for role_name in role_names)
+        
+    def has_all_roles(self, role_names):
+        """
+        Check if the user has all of the specified roles.
+        
+        Args:
+            role_names (list): A list of role names to check for
+            
+        Returns:
+            bool: True if user has all of the roles, False otherwise
+        """
+        if not role_names:
+            return True
+        return all(self.has_role(role_name) for role_name in role_names)
+        
+    def add_role(self, role, db_session):
+        """
+        Add a role to the user.
+        
+        Args:
+            role: The Role object or role name to add
+            db_session: SQLAlchemy session
+            
+        Returns:
+            bool: True if role was added, False if already exists or error
+        """
+        # If role is a string, get or create the role object
+        if isinstance(role, str):
+            from .role import Role
+            role = Role.get_or_create(db_session, role)
+            
+        # Check if user already has this role
+        if role in self.roles:
             return False
             
-        # Ensure user has settings
-        if not self.settings:
-            from .user_settings import UserSettings
-            self.settings = UserSettings(user_id=self.id)
-            
-        self.settings.is_admin = is_admin
+        self.roles.append(role)
         return True
+        
+    def remove_role(self, role, db_session):
+        """
+        Remove a role from the user.
+        
+        Args:
+            role: The Role object or role name to remove
+            db_session: SQLAlchemy session
+            
+        Returns:
+            bool: True if role was removed, False if not found or error
+        """
+        # If role is a string, find the role object
+        if isinstance(role, str):
+            from .role import Role
+            role_obj = db_session.query(Role).filter_by(name=role).first()
+            if not role_obj:
+                return False
+            role = role_obj
+            
+        # Check if user has this role
+        if role not in self.roles:
+            return False
+            
+        self.roles.remove(role)
+        return True
+        
+    def can_access_transactions(self):
+        """
+        Check if user has permission to access the transactions page.
+        
+        Returns:
+            bool: True if user can access transactions, False otherwise
+        """
+        # Super admins and admins always have access
+        if self.is_super_admin or self.is_admin:
+            return True
+            
+        # Users with the 'transactions' role have access
+        return self.has_role('transactions')
+        
+    def can_access_reports(self):
+        """
+        Check if user has permission to access the reports page.
+        
+        Returns:
+            bool: True if user can access reports, False otherwise
+        """
+        # Super admins and admins always have access
+        if self.is_super_admin or self.is_admin:
+            return True
+            
+        # Users with the 'reports' role have access
+        return self.has_role('reports')
+        
+    def can_manage_system_settings(self):
+        """
+        Check if user has permission to manage system settings.
+        
+        Returns:
+            bool: True if user can manage system settings, False otherwise
+        """
+        # Only super admins can manage system settings
+        return self.is_super_admin
+        
+    def can_manage_users(self):
+        """
+        Check if user has permission to manage users.
+        
+        Returns:
+            bool: True if user can manage users, False otherwise
+        """
+        # Only super admins can manage users
+        return self.is_super_admin
+        
+    def can_manage_mercury_accounts(self):
+        """
+        Check if user has permission to manage Mercury accounts.
+        
+        Returns:
+            bool: True if user can manage Mercury accounts, False otherwise
+        """
+        # Super admins and admins can manage Mercury accounts
+        return self.is_super_admin or self.is_admin
+        
+    def can_manage_account_settings(self):
+        """
+        Check if user has permission to manage account settings.
+        
+        Returns:
+            bool: True if user can manage account settings, False otherwise
+        """
+        # Super admins and admins can manage account settings
+        return self.is_super_admin or self.is_admin
 
     # Flask-Login methods
     def is_authenticated(self):

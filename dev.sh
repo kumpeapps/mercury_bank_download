@@ -28,15 +28,18 @@ show_usage() {
     echo "  encrypt-keys   - Encrypt existing API keys"
     echo "  test-encrypt   - Test encryption functionality"
     echo ""
-    echo "Admin Management:"
+    echo "User & Role Management:"
     echo "  create-admin   - Create first admin user"
-    echo "  promote-admin  - Promote existing user to admin"
-    echo "  demote-admin   - Remove admin privileges from a user"
-    echo "  list-admin     - List all admin users"
-    echo "  ensure-admin   - Ensure first user is admin (migration)"
+    echo "  create-super-admin - Create first super-admin user"
+    echo "  assign-role    - Assign a role to a user"
+    echo "  remove-role    - Remove a role from a user"
     echo "  add-user       - Create a new user account"
     echo "  delete-user    - Delete a user account"
-    echo "  list-users     - List all users"
+    echo "  list-users     - List all users and their roles"
+    echo "  list-by-role   - List users with a specific role"
+    echo "  list-roles     - List all available roles"
+    echo "  create-role    - Create a new role"
+    echo "  ensure-admin   - Ensure first user is admin (migration)"
     echo "  toggle-signup  - Enable/disable user registration"
     echo "  toggle-user-deletion - Enable/disable prevention of user deletion"
     echo ""
@@ -162,30 +165,49 @@ case "$1" in
     
     "create-admin")
         echo "Creating first admin user..."
-        docker-compose exec web-app python admin_user.py create
+        docker-compose exec web-app python admin_user.py.new create
         ;;
     
-    "promote-admin")
-        if [ -z "$2" ]; then
-            echo "Usage: $0 promote-admin <username>"
+    "create-super-admin")
+        echo "Creating first super-admin user..."
+        docker-compose exec web-app python admin_user.py.new create_super_admin
+        ;;
+    
+    "assign-role")
+        if [ -z "$2" ] || [ -z "$3" ]; then
+            echo "Usage: $0 assign-role <username> <role>"
             exit 1
         fi
-        echo "Promoting user '$2' to admin..."
-        docker-compose exec web-app python admin_user.py promote "$2"
+        echo "Assigning role '$3' to user '$2'..."
+        docker-compose exec web-app python admin_user.py.new assign_role "$2" "$3"
         ;;
     
-    "demote-admin")
-        if [ -z "$2" ]; then
-            echo "Usage: $0 demote-admin <username>"
+    "remove-role")
+        if [ -z "$2" ] || [ -z "$3" ]; then
+            echo "Usage: $0 remove-role <username> <role>"
             exit 1
         fi
-        echo "Removing admin privileges from user '$2'..."
-        docker-compose exec web-app python admin_user.py demote "$2"
+        echo "Removing role '$3' from user '$2'..."
+        docker-compose exec web-app python admin_user.py.new remove_role "$2" "$3"
         ;;
     
-    "list-admin")
-        echo "Listing admin users..."
-        docker-compose exec web-app python admin_user.py list_admin
+    "list-by-role")
+        if [ -z "$2" ]; then
+            echo "Usage: $0 list-by-role <role>"
+            exit 1
+        fi
+        echo "Listing users with role '$2'..."
+        docker-compose exec web-app python admin_user.py.new list_by_role "$2"
+        ;;
+    
+    "list-roles")
+        echo "Listing all available roles..."
+        docker-compose exec web-app python admin_user.py.new list_roles
+        ;;
+    
+    "create-role")
+        echo "Creating new role..."
+        docker-compose exec web-app python admin_user.py.new create_role
         ;;
     
     "ensure-admin")
@@ -195,7 +217,7 @@ case "$1" in
     
     "add-user")
         echo "Creating a new user account..."
-        docker-compose exec web-app python admin_user.py add
+        docker-compose exec web-app python admin_user.py.new add
         ;;
     
     "delete-user")
@@ -204,22 +226,51 @@ case "$1" in
             exit 1
         fi
         echo "Deleting user account '$2'..."
-        docker-compose exec web-app python admin_user.py delete "$2"
+        docker-compose exec web-app python admin_user.py.new delete "$2"
         ;;
     
     "list-users")
         echo "Listing all users..."
-        docker-compose exec web-app python admin_user.py list
+        docker-compose exec web-app python admin_user.py.new list
         ;;
     
     "toggle-signup")
         echo "Toggling user registration..."
-        docker-compose exec web-app python admin_user.py toggle_signup
+        docker-compose exec web-app python admin_user.py.new toggle_signup
         ;;
     
     "toggle-user-deletion")
         echo "Toggling user deletion prevention..."
-        docker-compose exec web-app python admin_user.py toggle_user_deletion
+        docker-compose exec web-app python admin_user.py.new toggle_user_deletion
+        ;;
+    
+    # Legacy command aliases for backward compatibility
+    "promote-admin")
+        if [ -z "$2" ]; then
+            echo "Usage: $0 promote-admin <username>"
+            echo "Note: This command is deprecated. Use 'assign-role <username> admin' instead."
+            exit 1
+        fi
+        echo "Legacy command: Promoting user '$2' to admin..."
+        echo "Note: This command is deprecated. Use 'assign-role $2 admin' instead."
+        docker-compose exec web-app python admin_user.py.new assign_role "$2" "admin"
+        ;;
+    
+    "demote-admin")
+        if [ -z "$2" ]; then
+            echo "Usage: $0 demote-admin <username>"
+            echo "Note: This command is deprecated. Use 'remove-role <username> admin' instead."
+            exit 1
+        fi
+        echo "Legacy command: Removing admin privileges from user '$2'..."
+        echo "Note: This command is deprecated. Use 'remove-role $2 admin' instead."
+        docker-compose exec web-app python admin_user.py.new remove_role "$2" "admin"
+        ;;
+    
+    "list-admin")
+        echo "Legacy command: Listing admin users..."
+        echo "Note: This command is deprecated. Use 'list-by-role admin' instead."
+        docker-compose exec web-app python admin_user.py.new list_by_role "admin"
         ;;
     
     "shell-sync")

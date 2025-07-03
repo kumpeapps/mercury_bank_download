@@ -350,6 +350,35 @@ LEFT JOIN accounts a ON ma.id = a.mercury_account_id
 GROUP BY ma.id;"
 ```
 
+### Applying Changes Properly
+
+When making changes to the application, it's crucial to follow the correct procedure to ensure all components are properly rebuilt and synchronized:
+
+```bash
+# ALWAYS use this command to apply changes:
+./dev.sh rebuild-dev
+```
+
+This command will:
+
+1. Stop all running containers
+2. Rebuild the Docker images with your latest code changes
+3. Start all services in development mode
+4. Run migrations automatically
+
+❌ **NEVER** use these commands for applying changes:
+
+- `docker restart container-name`
+- `docker-compose restart`
+
+Using direct Docker commands may lead to inconsistencies between the code and running containers, migration issues, and other hard-to-debug problems.
+
+You can use the provided helper script to apply changes properly:
+
+```bash
+./apply-changes.sh
+```
+
 ## 🐳 Docker Deployment
 
 ### Available Images

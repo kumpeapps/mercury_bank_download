@@ -54,9 +54,26 @@
                             <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
                         </div>
                         
+                        <div class="mb-3">
+                            <label class="form-label">User Roles</label>
+                            <div class="form-text text-muted mb-2">Select the roles to assign to this user. The 'user' role is required for basic access.</div>
+                            {% for role in available_roles %}
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="role_{{ role.name }}" name="roles" value="{{ role.name }}" 
+                                       {% if role.name == 'user' %}checked{% endif %}>
+                                <label class="form-check-label" for="role_{{ role.name }}">
+                                    <strong>{{ role.name.title() }}</strong> - {{ role.description }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        
                         <div class="mb-3 form-check">
                             <input type="checkbox" class="form-check-input" id="is_admin" name="is_admin" value="true">
-                            <label class="form-check-label" for="is_admin">Grant admin privileges</label>
+                            <label class="form-check-label" for="is_admin">
+                                <span class="text-muted">(Legacy) Grant admin privileges</span>
+                            </label>
+                            <div class="form-text">Note: This is for backward compatibility. Use roles above instead.</div>
                         </div>
                         
                         <div class="d-grid gap-2">
