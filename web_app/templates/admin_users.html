@@ -40,8 +40,34 @@
                         <strong>Users are externally managed.</strong> User management functions are restricted because the system is configured to use externally managed users (USERS_EXTERNALLY_MANAGED=true).
                     </div>
                     {% endif %}
+                    
+                    <!-- Admin Search Bar -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="fas fa-search"></i>
+                                </span>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="adminSearch" 
+                                       placeholder="Search admin users..."
+                                       autocomplete="off">
+                                <button class="btn btn-outline-secondary" 
+                                        type="button" 
+                                        id="clearAdminSearch" 
+                                        title="Clear search">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted">
+                                <span id="adminCount">{{ admin_users|length }}</span> admin(s) found
+                            </small>
+                        </div>
+                    </div>
+                    
                     <div class="table-responsive">
-                        <table class="table table-hover">
+                        <table class="table table-hover" id="adminTable">
                             <thead>
                                 <tr>
                                     <th>Username</th>
@@ -49,7 +75,7 @@
                                     <th>Actions</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="adminTableBody">
                                 {% for admin in admin_users %}
                                 <tr>
                                     <td>{{ admin.username }}</td>
@@ -75,6 +101,13 @@
                                 {% endfor %}
                             </tbody>
                         </table>
+                        
+                        <!-- No admin results message -->
+                        <div id="noAdminResults" class="text-center py-4" style="display: none;">
+                            <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No admin users found</h5>
+                            <p class="text-muted">Try adjusting your search criteria</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -99,8 +132,34 @@
                         User deletion is currently disabled. This can be changed in <a href="{{ url_for('admin_settings') }}">System Settings</a>.
                     </div>
                     {% endif %}
+                    
+                    <!-- Search Bar -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="fas fa-search"></i>
+                                </span>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="userSearch" 
+                                       placeholder="Search users by username, email, or role..."
+                                       autocomplete="off">
+                                <button class="btn btn-outline-secondary" 
+                                        type="button" 
+                                        id="clearSearch" 
+                                        title="Clear search">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted">
+                                <span id="userCount">{{ all_users|length }}</span> user(s) found
+                            </small>
+                        </div>
+                    </div>
+                    
                     <div class="table-responsive">
-                        <table class="table table-hover">
+                        <table class="table table-hover" id="usersTable">
                             <thead>
                                 <tr>
                                     <th>Username</th>
@@ -111,7 +170,7 @@
                                     <th>Actions</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="usersTableBody">
                                 {% for user in all_users %}
                                 <tr>
                                     <td>{{ user.username }}</td>
@@ -198,6 +257,13 @@
                                 {% endfor %}
                             </tbody>
                         </table>
+                        
+                        <!-- No results message -->
+                        <div id="noResults" class="text-center py-4" style="display: none;">
+                            <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No users found</h5>
+                            <p class="text-muted">Try adjusting your search criteria</p>
+                        </div>
                     </div>
                 </div>
                 <div class="card-footer">
@@ -209,4 +275,242 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('userSearch');
+    const clearButton = document.getElementById('clearSearch');
+    const tableBody = document.getElementById('usersTableBody');
+    const userCount = document.getElementById('userCount');
+    const noResults = document.getElementById('noResults');
+    
+    const adminSearchInput = document.getElementById('adminSearch');
+    const clearAdminButton = document.getElementById('clearAdminSearch');
+    const adminTableBody = document.getElementById('adminTableBody');
+    const adminCount = document.getElementById('adminCount');
+    const noAdminResults = document.getElementById('noAdminResults');
+    
+    // All users data (from template)
+    const allUsers = [
+        {% for user in all_users %}
+        {
+            username: '{{ user.username }}',
+            email: '{{ user.email }}',
+            isAdmin: {{ 'true' if user.is_admin else 'false' }},
+            roles: [{% for role in user.roles %}'{{ role.name }}'{% if not loop.last %},{% endif %}{% endfor %}],
+            isLocked: {{ 'true' if user.has_role('locked') else 'false' }},
+            id: {{ user.id }},
+            isSuperAdmin: {{ 'true' if user.is_super_admin else 'false' }},
+            isCurrentUser: {{ 'true' if user.id == current_user.id else 'false' }}
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+    
+    // Admin users data (from template)
+    const allAdmins = [
+        {% for admin in admin_users %}
+        {
+            username: '{{ admin.username }}',
+            email: '{{ admin.email }}',
+            id: {{ admin.id }}
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+    
+    function renderUsers(users) {
+        if (users.length === 0) {
+            tableBody.style.display = 'none';
+            noResults.style.display = 'block';
+            userCount.textContent = '0';
+            return;
+        }
+        
+        tableBody.style.display = 'table-row-group';
+        noResults.style.display = 'none';
+        userCount.textContent = users.length;
+        
+        tableBody.innerHTML = users.map(user => `
+            <tr>
+                <td>${user.username}</td>
+                <td>${user.email}</td>
+                <td>
+                    ${user.isAdmin ? 
+                        '<span class="badge bg-success">Yes</span>' : 
+                        '<span class="badge bg-secondary">No</span>'
+                    }
+                </td>
+                <td>
+                    ${user.roles.length > 0 ? 
+                        user.roles.map(role => `<span class="badge bg-primary me-1">${role}</span>`).join('') :
+                        '<span class="text-muted">No roles</span>'
+                    }
+                </td>
+                <td>
+                    ${user.isLocked ? 
+                        '<span class="badge bg-danger">Locked</span>' : 
+                        '<span class="badge bg-success">Active</span>'
+                    }
+                </td>
+                <td>
+                    ${getCurrentUserActions(user)}
+                </td>
+            </tr>
+        `).join('');
+    }
+    
+    function renderAdmins(admins) {
+        if (admins.length === 0) {
+            adminTableBody.style.display = 'none';
+            noAdminResults.style.display = 'block';
+            adminCount.textContent = '0';
+            return;
+        }
+        
+        adminTableBody.style.display = 'table-row-group';
+        noAdminResults.style.display = 'none';
+        adminCount.textContent = admins.length;
+        
+        adminTableBody.innerHTML = admins.map(admin => `
+            <tr>
+                <td>${admin.username}</td>
+                <td>${admin.email}</td>
+                <td>
+                    {% if not users_externally_managed %}
+                    <form method="post" action="/admin/users/${admin.id}/demote" class="d-inline">
+                        <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Are you sure you want to remove admin privileges from ${admin.username}?')">
+                            <i class="fas fa-user-minus"></i> Remove Admin
+                        </button>
+                    </form>
+                    {% else %}
+                    <span class="text-muted">
+                        <i class="fas fa-lock"></i> External Management
+                    </span>
+                    {% endif %}
+                </td>
+            </tr>
+        `).join('');
+    }
+    
+    function getCurrentUserActions(user) {
+        let actions = '';
+        
+        // Manage Roles button (super admin only)
+        {% if current_user.is_super_admin %}
+        actions += `<a href="/admin/users/${user.id}/roles" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-user-cog"></i> Manage Roles
+                    </a> `;
+        {% endif %}
+        
+        // Admin promotion/demotion
+        if (!user.isAdmin) {
+            actions += `<form method="post" action="/admin/users/${user.id}/promote" class="d-inline">
+                            <button type="submit" class="btn btn-sm btn-success">
+                                <i class="fas fa-user-shield"></i> Make Admin
+                            </button>
+                        </form> `;
+        } else {
+            actions += `<form method="post" action="/admin/users/${user.id}/demote" class="d-inline">
+                            <button type="submit" class="btn btn-sm btn-warning">
+                                <i class="fas fa-user-minus"></i> Remove Admin
+                            </button>
+                        </form> `;
+        }
+        
+        {% if not users_externally_managed %}
+        // Delete button
+        const deleteDisabled = {{ 'true' if prevent_user_deletion else 'false' }};
+        const deleteTitle = deleteDisabled ? 'User deletion is disabled in admin settings' : '';
+        actions += `<form method="post" action="/admin/users/${user.id}/delete" class="d-inline">
+                        <button type="submit" class="btn btn-sm btn-danger" 
+                            ${deleteDisabled ? 'disabled' : ''} 
+                            title="${deleteTitle}"
+                            onclick="return confirm('Are you sure you want to delete ' + user.username + '? This cannot be undone.')">
+                            <i class="fas fa-user-times"></i> Delete
+                        </button>
+                    </form> `;
+        
+        // Lock/Unlock button
+        if (!user.isSuperAdmin && !user.isCurrentUser) {
+            if (user.isLocked) {
+                actions += `<form method="post" action="/admin/users/${user.id}/unlock" class="d-inline">
+                                <button type="submit" class="btn btn-sm btn-info" 
+                                    onclick="return confirm('Are you sure you want to unlock ' + user.username + '?')">
+                                    <i class="fas fa-unlock"></i> Unlock
+                                </button>
+                            </form>`;
+            } else {
+                actions += `<form method="post" action="/admin/users/${user.id}/lock" class="d-inline">
+                                <button type="submit" class="btn btn-sm btn-warning" 
+                                    onclick="return confirm('Are you sure you want to lock ' + user.username + '? They will be unable to log in.')">
+                                    <i class="fas fa-lock"></i> Lock
+                                </button>
+                            </form>`;
+            }
+        }
+        {% else %}
+        actions += `<span class="text-muted small">
+                        <i class="fas fa-lock"></i> User deletion disabled (external management)
+                    </span>`;
+        {% endif %}
+        
+        return actions;
+    }
+    
+    function filterUsers(searchTerm) {
+        if (!searchTerm.trim()) {
+            return allUsers;
+        }
+        
+        const term = searchTerm.toLowerCase();
+        return allUsers.filter(user => {
+            return user.username.toLowerCase().includes(term) ||
+                   user.email.toLowerCase().includes(term) ||
+                   user.roles.some(role => role.toLowerCase().includes(term));
+        });
+    }
+    
+    function filterAdmins(searchTerm) {
+        if (!searchTerm.trim()) {
+            return allAdmins;
+        }
+        
+        const term = searchTerm.toLowerCase();
+        return allAdmins.filter(admin => {
+            return admin.username.toLowerCase().includes(term) ||
+                   admin.email.toLowerCase().includes(term);
+        });
+    }
+    
+    // All Users search functionality
+    searchInput.addEventListener('input', function() {
+        const filteredUsers = filterUsers(this.value);
+        renderUsers(filteredUsers);
+    });
+    
+    clearButton.addEventListener('click', function() {
+        searchInput.value = '';
+        renderUsers(allUsers);
+        searchInput.focus();
+    });
+    
+    // Admin Users search functionality
+    adminSearchInput.addEventListener('input', function() {
+        const filteredAdmins = filterAdmins(this.value);
+        renderAdmins(filteredAdmins);
+    });
+    
+    clearAdminButton.addEventListener('click', function() {
+        adminSearchInput.value = '';
+        renderAdmins(allAdmins);
+        adminSearchInput.focus();
+    });
+    
+    // Initial render
+    renderUsers(allUsers);
+    renderAdmins(allAdmins);
+    
+    // Focus search on page load
+    searchInput.focus();
+});
+</script>
 {% endblock %}
