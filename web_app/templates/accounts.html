@@ -121,12 +121,49 @@
                     
                     <div class="row mt-2">
                         <div class="col-12">
-                            <p class="text-muted mb-1">Receipt Requirement</p>
-                            {% if account_data.account.receipt_required == 'always' %}
-                                <span class="badge bg-warning text-dark">Always Required</span>
-                            {% elif account_data.account.receipt_required == 'threshold' %}
-                                <span class="badge bg-orange text-dark">Required > ${{ "%.2f"|format(account_data.account.receipt_threshold or 0) }}</span>
-                            {% else %}
+                            <p class="text-muted mb-1">Receipt Requirements</p>
+                            
+                            <!-- Deposits Receipt Requirements -->
+                            {% if account_data.account.receipt_required_deposits and account_data.account.receipt_required_deposits != 'none' %}
+                                <div class="mb-1">
+                                    <small class="text-success me-1">
+                                        <i class="fas fa-arrow-down"></i> Deposits:
+                                    </small>
+                                    {% if account_data.account.receipt_required_deposits == 'always' %}
+                                        <span class="badge bg-warning text-dark">Always Required</span>
+                                    {% elif account_data.account.receipt_required_deposits == 'threshold' %}
+                                        <span class="badge bg-orange text-dark">Required > ${{ "%.2f"|format(account_data.account.receipt_threshold_deposits or 0) }}</span>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                            
+                            <!-- Charges Receipt Requirements -->
+                            {% if account_data.account.receipt_required_charges and account_data.account.receipt_required_charges != 'none' %}
+                                <div class="mb-1">
+                                    <small class="text-danger me-1">
+                                        <i class="fas fa-arrow-up"></i> Charges:
+                                    </small>
+                                    {% if account_data.account.receipt_required_charges == 'always' %}
+                                        <span class="badge bg-warning text-dark">Always Required</span>
+                                    {% elif account_data.account.receipt_required_charges == 'threshold' %}
+                                        <span class="badge bg-orange text-dark">Required > ${{ "%.2f"|format(account_data.account.receipt_threshold_charges or 0) }}</span>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                            
+                            <!-- Show legacy setting if no separate settings are configured -->
+                            {% if (not account_data.account.receipt_required_deposits or account_data.account.receipt_required_deposits == 'none') and (not account_data.account.receipt_required_charges or account_data.account.receipt_required_charges == 'none') %}
+                                {% if account_data.account.receipt_required == 'always' %}
+                                    <span class="badge bg-warning text-dark">Always Required</span>
+                                {% elif account_data.account.receipt_required == 'threshold' %}
+                                    <span class="badge bg-orange text-dark">Required > ${{ "%.2f"|format(account_data.account.receipt_threshold or 0) }}</span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark">Not Required</span>
+                                {% endif %}
+                            {% endif %}
+                            
+                            <!-- Show "Not Required" if no requirements are set -->
+                            {% if (not account_data.account.receipt_required_deposits or account_data.account.receipt_required_deposits == 'none') and (not account_data.account.receipt_required_charges or account_data.account.receipt_required_charges == 'none') and (not account_data.account.receipt_required or account_data.account.receipt_required == 'none') %}
                                 <span class="badge bg-light text-dark">Not Required</span>
                             {% endif %}
                         </div>

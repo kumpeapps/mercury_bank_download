@@ -2807,7 +2807,7 @@ def edit_account(account_id):
             # Update account fields (nickname is read-only from Mercury API)
             account.receipt_required = request.form.get("receipt_required", "none")
             
-            # Handle receipt threshold
+            # Handle legacy receipt threshold
             threshold_str = request.form.get("receipt_threshold", "").strip()
             if account.receipt_required == "threshold" and threshold_str:
                 try:
@@ -2817,6 +2817,32 @@ def edit_account(account_id):
                     return render_template("edit_account.html", account=account, mercury_account=mercury_account)
             else:
                 account.receipt_threshold = None
+
+            # Handle separate deposit receipt requirements
+            account.receipt_required_deposits = request.form.get("receipt_required_deposits", "none")
+            
+            threshold_deposits_str = request.form.get("receipt_threshold_deposits", "").strip()
+            if account.receipt_required_deposits == "threshold" and threshold_deposits_str:
+                try:
+                    account.receipt_threshold_deposits = float(threshold_deposits_str)
+                except ValueError:
+                    flash("Invalid deposit receipt threshold amount.", "error")
+                    return render_template("edit_account.html", account=account, mercury_account=mercury_account)
+            else:
+                account.receipt_threshold_deposits = None
+
+            # Handle separate charge receipt requirements
+            account.receipt_required_charges = request.form.get("receipt_required_charges", "none")
+            
+            threshold_charges_str = request.form.get("receipt_threshold_charges", "").strip()
+            if account.receipt_required_charges == "threshold" and threshold_charges_str:
+                try:
+                    account.receipt_threshold_charges = float(threshold_charges_str)
+                except ValueError:
+                    flash("Invalid charge receipt threshold amount.", "error")
+                    return render_template("edit_account.html", account=account, mercury_account=mercury_account)
+            else:
+                account.receipt_threshold_charges = None
 
             # Handle exclude from reports setting
             account.exclude_from_reports = 'exclude_from_reports' in request.form
