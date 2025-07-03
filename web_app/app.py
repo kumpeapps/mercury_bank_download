@@ -291,19 +291,29 @@ def get_user_accessible_accounts(user_in_session, db_session, mercury_account_id
     return accessible_accounts
 
 
-def check_user_account_access(user_in_session, account_id, db_session):
+def get_user_accessible_accounts_for_reports(user_in_session, db_session, mercury_account_id=None):
     """
-    Check if a user has access to a specific account.
+    Get all accounts that a user has access to for reports, excluding accounts marked as exclude_from_reports.
 
     Args:
         user_in_session: User object bound to the current session
-        account_id: ID of the account to check
         db_session: SQLAlchemy session
+        mercury_account_id: Optional - filter by specific mercury account
 
     Returns:
-        bool: True if user has access, False otherwise
+        list: List of Account objects the user can access for reports
     """
-    return user_in_session.has_account_access(account_id, db_session)
+    # Get all accessible accounts first
+    accessible_accounts = get_user_accessible_accounts(user_in_session, db_session, mercury_account_id)
+    
+    # Filter out accounts that are excluded from reports
+    report_accounts = [
+        account
+        for account in accessible_accounts
+        if not account.exclude_from_reports
+    ]
+
+    return report_accounts
 
 
 # Helper functions
@@ -550,6 +560,7 @@ def get_reports_table_data(
         accounts = (
             db_session.query(Account)
             .filter_by(mercury_account_id=mercury_account.id)
+            .filter_by(exclude_from_reports=False)  # Exclude accounts marked as exclude_from_reports
             .all()
         )
         for account in accounts:
@@ -1324,8 +1335,8 @@ def reports():
         else:
             accessible_mercury_accounts = mercury_accounts
 
-        # Get accessible accounts for this user (respects account restrictions)
-        all_accessible_accounts = get_user_accessible_accounts(
+        # Get accessible accounts for this user (respects account restrictions and excludes accounts marked as exclude_from_reports)
+        all_accessible_accounts = get_user_accessible_accounts_for_reports(
             user_in_session, db_session
         )
 
@@ -1451,6 +1462,7 @@ def budget_data():
             accounts = (
                 db_session.query(Account)
                 .filter_by(mercury_account_id=mercury_account.id)
+                .filter_by(exclude_from_reports=False)  # Exclude accounts marked as exclude_from_reports
                 .all()
             )
             account_ids.extend([acc.id for acc in accounts])
@@ -1607,6 +1619,7 @@ def expense_breakdown():
             accounts = (
                 db_session.query(Account)
                 .filter_by(mercury_account_id=mercury_account.id)
+                .filter_by(exclude_from_reports=False)  # Exclude accounts marked as exclude_from_reports
                 .all()
             )
             account_ids.extend([acc.id for acc in accounts])
@@ -2456,6 +2469,9 @@ def edit_account(account_id):
                     return render_template("edit_account.html", account=account, mercury_account=mercury_account)
             else:
                 account.receipt_threshold = None
+
+            # Handle exclude from reports setting
+            account.exclude_from_reports = 'exclude_from_reports' in request.form
 
             db_session.commit()
             flash("Account updated successfully!", "success")

@@ -80,7 +80,27 @@
                         </div>
                     </div>
 
-                    <div class="row">
+                    <hr>
+
+                    <!-- Report Visibility Section -->
+                    <div class="mb-4">
+                        <h6 class="text-muted">Report Visibility</h6>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="exclude_from_reports" name="exclude_from_reports" 
+                                       {{ 'checked' if account.exclude_from_reports else '' }}>
+                                <label class="form-check-label" for="exclude_from_reports">
+                                    <strong>Exclude from Reports</strong>
+                                </label>
+                                <div class="form-text">
+                                    When enabled, this account will be hidden from the reports page and excluded from "All Accounts" filters.
+                                    You can still view transactions for this account on the accounts and transactions pages.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">>
                         <div class="col-md-6">
                             <button type="submit" class="btn btn-primary w-100">
                                 <i class="fas fa-save me-2"></i>Update Account

@@ -426,7 +426,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                                 <div class="text-muted small mt-2">Image no longer accessible</div>
                                             </div>
                                         ` : `
-                                            <img src="${attachment.mercury_url || '/static/img/no-image.png'}" 
+                                            <img src="${attachment.thumbnail_url || attachment.mercury_url || '/static/img/no-image.png'}" 
                                                  alt="${attachment.filename || 'Attachment'}" 
                                                  class="img-fluid rounded mb-2 attachment-image"
                                                  style="max-height: 150px; cursor: pointer;"

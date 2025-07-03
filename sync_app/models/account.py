@@ -37,6 +37,7 @@ class Account(Base):
         legal_business_name (str, optional): Legal business name associated with account
         receipt_required (str): Receipt requirement setting - 'none', 'always', or 'threshold'
         receipt_threshold (float, optional): Dollar amount threshold for receipt requirement
+        exclude_from_reports (bool): Whether to exclude from reports and "all accounts" filter, defaults to False
         is_active (bool): Whether the account is active, defaults to True
         created_at (datetime): Timestamp when record was created
         updated_at (datetime): Timestamp when record was last updated
@@ -70,6 +71,9 @@ class Account(Base):
     # Receipt requirement settings
     receipt_required = Column(String(20), default="none")  # "none", "always", "threshold"
     receipt_threshold = Column(Float, nullable=True)  # Dollar amount threshold for receipt requirement
+
+    # Report visibility settings
+    exclude_from_reports = Column(Boolean, default=False)  # Whether to exclude from reports and "all accounts" filter
 
     # System fields
     is_active = Column(Boolean, default=True)

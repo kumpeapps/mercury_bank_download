@@ -848,16 +848,54 @@ class MercuryBankSyncer:
                 from datetime import datetime, timedelta
                 url_expires_at = datetime.utcnow() + timedelta(hours=12)
 
+                # Get content type, with fallbacks
+                content_type = self._safe_get(attachment_data, "contentType") or self._safe_get(attachment_data, "mimeType")
+                
+                # Infer content type from filename if not provided
+                if not content_type and attachment_filename:
+                    # Simple extension to MIME type mapping for common types
+                    extension_map = {
+                        'pdf': 'application/pdf',
+                        'png': 'image/png',
+                        'jpg': 'image/jpeg',
+                        'jpeg': 'image/jpeg',
+                        'gif': 'image/gif',
+                        'tiff': 'image/tiff',
+                        'tif': 'image/tiff',
+                        'bmp': 'image/bmp',
+                        'webp': 'image/webp',
+                        'doc': 'application/msword',
+                        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                        'xls': 'application/vnd.ms-excel',
+                        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        'ppt': 'application/vnd.ms-powerpoint',
+                        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                        'txt': 'text/plain',
+                        'csv': 'text/csv',
+                        'html': 'text/html',
+                        'htm': 'text/html',
+                    }
+                    
+                    # Get file extension
+                    parts = attachment_filename.split('.')
+                    if len(parts) > 1:
+                        extension = parts[-1].lower()
+                        content_type = extension_map.get(extension, f'application/{extension}')
+
+                # Get thumbnail URL
+                thumbnail_url = self._safe_get(attachment_data, "thumbnailUrl")
+                
+                # Generate a thumbnail URL for image files if Mercury doesn't provide one
+                if not thumbnail_url and content_type and content_type.startswith('image/') and attachment_url:
+                    # For images, we can use the actual image URL as the thumbnail
+                    thumbnail_url = attachment_url
+                
                 if existing_attachment:
                     # Update existing attachment - always overwrite with latest data
                     existing_attachment.filename = self._safe_get(
                         attachment_data, "fileName"
                     )
-                    existing_attachment.content_type = self._safe_get(
-                        attachment_data, "contentType"
-                    ) or self._safe_get(
-                        attachment_data, "mimeType"
-                    )
+                    existing_attachment.content_type = content_type
                     existing_attachment.file_size = self._safe_get(
                         attachment_data, "fileSize"
                     ) or self._safe_get(
@@ -871,9 +909,7 @@ class MercuryBankSyncer:
                     existing_attachment.mercury_url = self._safe_get(
                         attachment_data, "url"
                     )
-                    existing_attachment.thumbnail_url = self._safe_get(
-                        attachment_data, "thumbnailUrl"
-                    )
+                    existing_attachment.thumbnail_url = thumbnail_url
                     existing_attachment.url_expires_at = url_expires_at  # Reset expiration on update
                     
                     if upload_date:
@@ -887,14 +923,13 @@ class MercuryBankSyncer:
                             id=attachment_id,
                             transaction_id=transaction_id,
                             filename=self._safe_get(attachment_data, "fileName"),
-                            content_type=self._safe_get(attachment_data, "contentType") 
-                                       or self._safe_get(attachment_data, "mimeType"),
+                            content_type=content_type,
                             file_size=self._safe_get(attachment_data, "fileSize") 
                                     or self._safe_get(attachment_data, "size"),
                             description=self._safe_get(attachment_data, "description")
                                       or self._safe_get(attachment_data, "attachmentType"),
                             mercury_url=self._safe_get(attachment_data, "url"),
-                            thumbnail_url=self._safe_get(attachment_data, "thumbnailUrl"),
+                            thumbnail_url=thumbnail_url,
                             upload_date=upload_date,
                             url_expires_at=url_expires_at,
                         )
@@ -919,9 +954,7 @@ class MercuryBankSyncer:
                         if existing_attachment:
                             # Update it with latest data if it was created by another process
                             existing_attachment.filename = self._safe_get(attachment_data, "fileName")
-                            existing_attachment.content_type = self._safe_get(
-                                attachment_data, "contentType"
-                            ) or self._safe_get(attachment_data, "mimeType")
+                            existing_attachment.content_type = content_type
                             existing_attachment.file_size = self._safe_get(
                                 attachment_data, "fileSize"
                             ) or self._safe_get(attachment_data, "size")
@@ -929,9 +962,7 @@ class MercuryBankSyncer:
                                 attachment_data, "description"
                             ) or self._safe_get(attachment_data, "attachmentType")
                             existing_attachment.mercury_url = self._safe_get(attachment_data, "url")
-                            existing_attachment.thumbnail_url = self._safe_get(
-                                attachment_data, "thumbnailUrl"
-                            )
+                            existing_attachment.thumbnail_url = thumbnail_url
                             existing_attachment.url_expires_at = url_expires_at  # Reset expiration
                             if upload_date:
                                 existing_attachment.upload_date = upload_date
