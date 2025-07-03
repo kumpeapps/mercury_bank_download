@@ -32,6 +32,7 @@ import json
 import csv
 import io
 import logging
+import hashlib
 from collections import defaultdict
 from functools import wraps
 
@@ -414,6 +415,20 @@ def is_signup_enabled():
         db_session.close()
 
 
+def get_gravatar_url(email, size=40, default='identicon'):
+    """Generate a Gravatar URL for the given email address."""
+    if not email:
+        email = ""
+    
+    # Create the hash
+    email_hash = hashlib.md5(email.lower().encode('utf-8')).hexdigest()
+    
+    # Build the URL
+    gravatar_url = f"https://www.gravatar.com/avatar/{email_hash}?s={size}&d={default}"
+    
+    return gravatar_url
+
+
 # Template context processor to avoid DetachedInstanceError
 @app.context_processor
 def inject_user():
@@ -461,6 +476,13 @@ def inject_branding():
             app_description="Mercury Bank data synchronization and management platform",
             logo_url=""
         )
+
+
+# Register template filters
+@app.template_filter('gravatar')
+def gravatar_filter(email, size=40):
+    """Template filter for generating Gravatar URLs."""
+    return get_gravatar_url(email, size)
 
 
 @app.teardown_appcontext
