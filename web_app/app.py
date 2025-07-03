@@ -2383,7 +2383,7 @@ def lock_user(user_id):
 
         # Add the locked role
         if not user.has_role('locked'):
-            user.add_role('locked')
+            user.add_role('locked', db_session)
             db_session.commit()
             flash(f"User '{user.username}' has been locked.", "success")
         else:
@@ -2416,7 +2416,7 @@ def unlock_user(user_id):
 
         # Remove the locked role
         if user.has_role('locked'):
-            user.remove_role('locked')
+            user.remove_role('locked', db_session)
             db_session.commit()
             flash(f"User '{user.username}' has been unlocked.", "success")
         else:
