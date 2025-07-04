@@ -2420,14 +2420,6 @@ def edit_user_roles(user_id):
             flash("Access denied. Super-admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
-        # Check if users are externally managed
-        users_externally_managed = SystemSetting.get_bool_value(
-            db_session, "users_externally_managed", default=False
-        )
-        if users_externally_managed:
-            flash("Role management is not allowed when users are externally managed.", "error")
-            return redirect(url_for("admin_users"))
-
         # Get the user to edit
         user = db_session.query(User).get(user_id)
         if not user:
@@ -2464,6 +2456,144 @@ def edit_user_roles(user_id):
     except Exception as e:
         db_session.rollback()
         flash(f"Error updating user roles: {str(e)}", "error")
+        return redirect(url_for("admin_users"))
+    finally:
+        db_session.close()
+
+
+@app.route("/admin/users/<int:user_id>/settings", methods=["GET", "POST"])
+@login_required
+@super_admin_required
+def edit_user_settings(user_id):
+    """Edit settings for a user - super-admin only."""
+    db_session = Session()
+    try:
+        # Get current user in session to avoid DetachedInstanceError
+        user_in_session = get_current_user_in_session(db_session)
+        if not user_in_session:
+            flash("User session expired. Please log in again.", "error")
+            return redirect(url_for("login"))
+
+        # Check if user is super-admin
+        if not user_in_session.is_super_admin:
+            flash("Access denied. Super-admin privileges required.", "error")
+            return redirect(url_for("dashboard"))
+
+        # Get the user to edit
+        user = db_session.query(User).get(user_id)
+        if not user:
+            flash("User not found.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Get or create user settings
+        settings = (
+            db_session.query(UserSettings).filter_by(user_id=user.id).first()
+        )
+        if not settings:
+            settings = UserSettings(user_id=user.id)
+            db_session.add(settings)
+            db_session.commit()
+
+        # Get available Mercury accounts for this user
+        mercury_accounts = (
+            db_session.query(MercuryAccount)
+            .filter(MercuryAccount.users.contains(user))
+            .all()
+        )
+
+        # Get user's accessible accounts for primary account selection
+        accessible_accounts = get_user_accessible_accounts(user, db_session)
+
+        if request.method == "POST":
+            # Update primary Mercury account
+            primary_mercury_account_id = request.form.get("primary_mercury_account_id")
+            if primary_mercury_account_id == "":
+                settings.primary_mercury_account_id = None
+            else:
+                primary_mercury_account_id = int(primary_mercury_account_id)
+                # Verify user has access to this Mercury account
+                accessible_account_ids = [ma.id for ma in mercury_accounts]
+                if primary_mercury_account_id in accessible_account_ids:
+                    settings.primary_mercury_account_id = primary_mercury_account_id
+                else:
+                    flash(
+                        f"User '{user.username}' doesn't have access to the selected Mercury account.",
+                        "error",
+                    )
+                    return render_template(
+                        "edit_user_settings.html",
+                        settings=settings,
+                        target_user=user,
+                        mercury_accounts=mercury_accounts,
+                        accessible_accounts=accessible_accounts,
+                    )
+
+            # Update primary account
+            primary_account_id = request.form.get("primary_account_id")
+            if primary_account_id == "":
+                settings.primary_account_id = None
+            else:
+                # Verify user has access to this account
+                accessible_account_ids = [acc.id for acc in accessible_accounts]
+                if primary_account_id in accessible_account_ids:
+                    settings.primary_account_id = primary_account_id
+                else:
+                    flash(f"User '{user.username}' doesn't have access to the selected account.", "error")
+                    return render_template(
+                        "edit_user_settings.html",
+                        settings=settings,
+                        target_user=user,
+                        mercury_accounts=mercury_accounts,
+                        accessible_accounts=accessible_accounts,
+                    )
+
+            # Update other preferences
+            dashboard_prefs = {}
+            report_prefs = {}
+            transaction_prefs = {}
+
+            # Dashboard preferences
+            if request.form.get("dashboard_show_pending") == "on":
+                dashboard_prefs["show_pending"] = True
+            else:
+                dashboard_prefs["show_pending"] = False
+
+            # Report preferences
+            report_prefs["default_view"] = request.form.get(
+                "report_default_view", "charts"
+            )
+            report_prefs["default_period"] = request.form.get(
+                "report_default_period", "12"
+            )
+
+            # Transaction preferences
+            transaction_prefs["default_page_size"] = int(
+                request.form.get("transaction_page_size", "50")
+            )
+            transaction_prefs["default_status_filter"] = request.form.getlist(
+                "transaction_default_status"
+            )
+
+            # Update settings
+            settings.dashboard_preferences = dashboard_prefs
+            settings.report_preferences = report_prefs
+            settings.transaction_preferences = transaction_prefs
+
+            db_session.commit()
+            flash(f"Settings updated successfully for user '{user.username}'!", "success")
+            return redirect(url_for("admin_users"))
+
+        return render_template(
+            "edit_user_settings.html",
+            settings=settings,
+            target_user=user,
+            mercury_accounts=mercury_accounts,
+            accessible_accounts=accessible_accounts,
+        )
+
+    except Exception as e:
+        db_session.rollback()
+        flash(f"Error updating user settings: {str(e)}", "error")
         return redirect(url_for("admin_users"))
     finally:
         db_session.close()
@@ -2683,21 +2813,7 @@ def edit_account(account_id):
         mercury_account = db_session.query(MercuryAccount).filter_by(id=account.mercury_account_id).first()
 
         if request.method == "POST":
-            # Update account fields (nickname is read-only from Mercury API)
-            account.receipt_required = request.form.get("receipt_required", "none")
-            
-            # Handle legacy receipt threshold
-            threshold_str = request.form.get("receipt_threshold", "").strip()
-            if account.receipt_required == "threshold" and threshold_str:
-                try:
-                    account.receipt_threshold = float(threshold_str)
-                except ValueError:
-                    flash("Invalid receipt threshold amount.", "error")
-                    return render_template("edit_account.html", account=account, mercury_account=mercury_account)
-            else:
-                account.receipt_threshold = None
-
-            # Handle separate deposit receipt requirements
+            # Handle current separate deposit receipt requirements
             account.receipt_required_deposits = request.form.get("receipt_required_deposits", "none")
             
             threshold_deposits_str = request.form.get("receipt_threshold_deposits", "").strip()
@@ -2710,7 +2826,7 @@ def edit_account(account_id):
             else:
                 account.receipt_threshold_deposits = None
 
-            # Handle separate charge receipt requirements
+            # Handle current separate charge receipt requirements
             account.receipt_required_charges = request.form.get("receipt_required_charges", "none")
             
             threshold_charges_str = request.form.get("receipt_threshold_charges", "").strip()

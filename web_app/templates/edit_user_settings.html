@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+
+{% block title %}Edit User Settings - {{ target_user.username }} - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-user-cog me-2"></i>Edit User Settings - {{ target_user.username }}</h1>
+    <a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to User Management
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <!-- User Info Card -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-user me-2"></i>
+                    User Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>Username:</strong> {{ target_user.username }}</p>
+                        <p class="mb-1"><strong>Email:</strong> {{ target_user.email }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>Roles:</strong>
+                            {% for role in target_user.roles %}
+                                <span class="badge bg-primary me-1">{{ role.name }}</span>
+                            {% else %}
+                                <span class="text-muted">No roles</span>
+                            {% endfor %}
+                        </p>
+                        <p class="mb-1"><strong>Status:</strong>
+                            {% if target_user.has_role('locked') %}
+                                <span class="badge bg-danger">Locked</span>
+                            {% else %}
+                                <span class="badge bg-success">Active</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <form method="POST">
+            <!-- Primary Mercury Account Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-star me-2"></i>
+                        Primary Mercury Account
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Set a default Mercury account that will be automatically selected for this user on the dashboard, 
+                        transactions, and reports pages. This helps streamline their workflow if they primarily 
+                        work with one Mercury account.
+                    </p>
+                    
+                    <div class="mb-3">
+                        <label for="primary_mercury_account_id" class="form-label">Primary Mercury Account</label>
+                        <select class="form-select" id="primary_mercury_account_id" name="primary_mercury_account_id">
+                            <option value="">No Primary Account (Show All)</option>
+                            {% for mercury_account in mercury_accounts %}
+                            <option value="{{ mercury_account.id }}" 
+                                    {% if settings.primary_mercury_account_id == mercury_account.id %}selected{% endif %}>
+                                {{ mercury_account.name }}
+                                {% if mercury_account.description %}
+                                    - {{ mercury_account.description }}
+                                {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            When set, this account will be automatically filtered for this user on dashboard, transactions, and reports pages.
+                            The user can always view all accounts by using the "Show All" options on those pages.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Primary Account Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-university me-2"></i>
+                        Primary Bank Account
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Set a default bank account within the primary Mercury account. This will be 
+                        automatically selected when the user is working within their primary Mercury account.
+                    </p>
+                    
+                    <div class="mb-3">
+                        <label for="primary_account_id" class="form-label">Primary Bank Account</label>
+                        <select class="form-select" id="primary_account_id" name="primary_account_id">
+                            <option value="">No Primary Account (Show All)</option>
+                            {% for account in accessible_accounts %}
+                            <option value="{{ account.id }}" 
+                                    {% if settings.primary_account_id == account.id %}selected{% endif %}>
+                                {{ account.name }}
+                                {% if account.account_type %}
+                                    ({{ account.account_type }})
+                                {% endif %}
+                                - ${{ "%.2f"|format(account.balance or 0) }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            When set along with a primary Mercury account, this specific bank account will be pre-selected for this user.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Preferences Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-tachometer-alt me-2"></i>
+                        Dashboard Preferences
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="dashboard_show_pending" name="dashboard_show_pending" 
+                                   {% if settings.dashboard_preferences and settings.dashboard_preferences.get('show_pending', True) %}checked{% endif %}>
+                            <label class="form-check-label" for="dashboard_show_pending">
+                                Show Pending Transactions
+                            </label>
+                            <div class="form-text">
+                                When enabled, pending transactions will be displayed on the dashboard by default.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Report Preferences Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-bar me-2"></i>
+                        Report Preferences
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="report_default_view" class="form-label">Default Report View</label>
+                                <select class="form-select" id="report_default_view" name="report_default_view">
+                                    <option value="charts" {% if settings.report_preferences and settings.report_preferences.get('default_view', 'charts') == 'charts' %}selected{% endif %}>
+                                        Charts View
+                                    </option>
+                                    <option value="table" {% if settings.report_preferences and settings.report_preferences.get('default_view', 'charts') == 'table' %}selected{% endif %}>
+                                        Table View
+                                    </option>
+                                </select>
+                                <div class="form-text">
+                                    Choose whether to show charts or tables by default when viewing reports.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="report_default_period" class="form-label">Default Time Period (months)</label>
+                                <select class="form-select" id="report_default_period" name="report_default_period">
+                                    <option value="3" {% if settings.report_preferences and settings.report_preferences.get('default_period', '12') == '3' %}selected{% endif %}>
+                                        3 Months
+                                    </option>
+                                    <option value="6" {% if settings.report_preferences and settings.report_preferences.get('default_period', '12') == '6' %}selected{% endif %}>
+                                        6 Months
+                                    </option>
+                                    <option value="12" {% if settings.report_preferences and settings.report_preferences.get('default_period', '12') == '12' %}selected{% endif %}>
+                                        12 Months
+                                    </option>
+                                    <option value="24" {% if settings.report_preferences and settings.report_preferences.get('default_period', '12') == '24' %}selected{% endif %}>
+                                        24 Months
+                                    </option>
+                                </select>
+                                <div class="form-text">
+                                    Default time period to show when loading reports.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transaction Preferences Section -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list me-2"></i>
+                        Transaction Preferences
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="transaction_page_size" class="form-label">Transactions Per Page</label>
+                                <select class="form-select" id="transaction_page_size" name="transaction_page_size">
+                                    <option value="25" {% if settings.transaction_preferences and settings.transaction_preferences.get('default_page_size', 50) == 25 %}selected{% endif %}>
+                                        25 per page
+                                    </option>
+                                    <option value="50" {% if settings.transaction_preferences and settings.transaction_preferences.get('default_page_size', 50) == 50 %}selected{% endif %}>
+                                        50 per page
+                                    </option>
+                                    <option value="100" {% if settings.transaction_preferences and settings.transaction_preferences.get('default_page_size', 50) == 100 %}selected{% endif %}>
+                                        100 per page
+                                    </option>
+                                    <option value="200" {% if settings.transaction_preferences and settings.transaction_preferences.get('default_page_size', 50) == 200 %}selected{% endif %}>
+                                        200 per page
+                                    </option>
+                                </select>
+                                <div class="form-text">
+                                    Number of transactions to display per page by default.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Default Transaction Status Filter</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="status_processed" name="transaction_default_status" value="processed"
+                                           {% if settings.transaction_preferences and 'processed' in settings.transaction_preferences.get('default_status_filter', ['processed', 'pending']) %}checked{% endif %}>
+                                    <label class="form-check-label" for="status_processed">
+                                        Processed
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="status_pending" name="transaction_default_status" value="pending"
+                                           {% if settings.transaction_preferences and 'pending' in settings.transaction_preferences.get('default_status_filter', ['processed', 'pending']) %}checked{% endif %}>
+                                    <label class="form-check-label" for="status_pending">
+                                        Pending
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="status_cancelled" name="transaction_default_status" value="cancelled"
+                                           {% if settings.transaction_preferences and 'cancelled' in settings.transaction_preferences.get('default_status_filter', ['processed', 'pending']) %}checked{% endif %}>
+                                    <label class="form-check-label" for="status_cancelled">
+                                        Cancelled
+                                    </label>
+                                </div>
+                                <div class="form-text">
+                                    Which transaction statuses to show by default.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Save Button -->
+            <div class="row">
+                <div class="col-md-6">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-save me-2"></i>Update User Settings
+                    </button>
+                </div>
+                <div class="col-md-6">
+                    <a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary w-100">Cancel</a>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Info Panel -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Admin Note
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">
+                    <strong>Super-Admin Privilege:</strong> You are editing settings for user "{{ target_user.username }}". 
+                    These settings control their default preferences and primary accounts.
+                </p>
+                <p class="text-muted">
+                    <strong>Account Access:</strong> The user will only see Mercury accounts and bank accounts 
+                    they have been granted access to through their account restrictions.
+                </p>
+                <p class="text-muted">
+                    <strong>User Override:</strong> The user can change these settings themselves through 
+                    their own settings page, but these admin-set defaults will apply when they first log in.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

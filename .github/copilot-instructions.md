@@ -69,3 +69,71 @@ Use the `dev.sh` script for common development tasks such as:
 - Model changes require container rebuild using `./dev.sh rebuild-dev`
 - Schema changes should be made to SQLAlchemy model definitions
 - Always test schema changes in development using `./dev.sh rebuild-dev`
+
+## Testing Framework
+
+### Test Structure
+The platform includes a comprehensive test suite located in the `tests/` directory:
+- **Unit Tests** (`test_models.py`) - Database model validation and relationships
+- **Integration Tests** (`test_user_registration.py`) - User registration and role assignment logic
+- **Web Tests** (`test_web_integration.py`) - HTTP endpoints, authentication, and form processing
+
+### Running Tests
+Use the test runner script for all testing needs:
+```bash
+./run_tests.sh                    # Run all tests with coverage
+./run_tests.sh --no-coverage      # Run tests without coverage
+./run_tests.sh --verbose          # Verbose output
+./run_tests.sh --pattern="test_*" # Run specific test patterns
+```
+
+### Test Categories and Coverage
+
+#### Model Tests (17 test cases)
+- User model creation and password handling
+- Role-based permissions and relationships
+- User settings without legacy fields (no is_admin flag)
+- System settings initialization and value handling
+- Mercury account and transaction model relationships
+
+#### User Registration Tests (9 test cases)
+- **First user automatically gets admin roles**: admin, super-admin, and user
+- **Subsequent users get only user role**: enforces proper role hierarchy
+- Password hashing and authentication validation
+- Username uniqueness enforcement
+- User settings creation and association
+
+#### Web Integration Tests (12 test cases)
+- **Registration workflow**: Page loading, form submission, validation
+- **Authentication flow**: Login success/failure, session management
+- **Permission enforcement**: Role-based access control
+- **Protected routes**: Dashboard requires authentication
+- **System settings**: Registration can be disabled dynamically
+- **Error handling**: Duplicate users, invalid credentials
+
+### Test Database Configuration
+- Uses SQLite in-memory database for isolation
+- Separate test Flask app with minimal templates
+- Fixtures for roles, system settings, and clean database state
+- No dependency on production MySQL database
+
+### Key Test Validations
+- **Role Assignment Logic**: First user gets all admin roles, others get user role only
+- **Authentication Security**: Password hashing, login validation, session management
+- **Permission System**: Role-based access control without legacy is_admin flags
+- **Error Handling**: Proper validation and error messages for edge cases
+- **Database Integrity**: Model relationships and constraints work correctly
+
+### CI/CD Integration
+- GitHub Actions workflow runs all tests automatically
+- Matrix testing across Python versions
+- Docker integration tests
+- Security scanning with safety and bandit
+- Coverage reporting with minimum thresholds
+
+### Test Development Guidelines
+- All new features should include corresponding tests
+- Test both happy path and error conditions
+- Use descriptive test names that explain the scenario
+- Follow the existing fixture pattern for database setup
+- Ensure tests are isolated and don't depend on each other

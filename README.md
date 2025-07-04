@@ -483,22 +483,55 @@ mercury_bank_download/
 
 ### Testing
 
+The platform includes a comprehensive test suite to ensure reliability and maintainability:
+
 ```bash
-# Run with sandbox mode
+# Run all tests with coverage
+./run_tests.sh
+
+# Run tests without coverage reporting
+./run_tests.sh --no-coverage
+
+# Run tests in verbose mode
+./run_tests.sh --verbose
+
+# Run specific test patterns
+./run_tests.sh --pattern="test_user*"
+
+# Run individual test categories
+python -m pytest tests/test_models.py          # Model tests
+python -m pytest tests/test_user_registration.py  # Registration tests
+python -m pytest tests/test_web_integration.py    # Web integration tests
+```
+
+#### Test Coverage
+- **38 test cases** covering critical functionality
+- **Model Tests** (17 tests) - Database models and relationships
+- **User Registration** (9 tests) - Role assignment and authentication
+- **Web Integration** (12 tests) - HTTP endpoints and user workflows
+
+#### Test Features
+- ✅ **Role Assignment Logic** - First user gets admin roles, others get user role
+- ✅ **Authentication Security** - Password hashing and session management
+- ✅ **Web Interface Testing** - Registration, login, and protected routes
+- ✅ **Database Validation** - Model relationships and constraints
+- ✅ **Error Handling** - Edge cases and validation scenarios
+- ✅ **CI/CD Integration** - Automated testing in GitHub Actions
+
+#### Development Testing
+```bash
+# Test sync service functionality
 MERCURY_SANDBOX_MODE=true python sync.py
 
 # Test with minimal data
 SYNC_DAYS_BACK=1 RUN_ONCE=true python sync.py
 
-# Run health check
+# Run health checks
 python health_check.py
 
-# Lint code
+# Code quality checks
 flake8 .
 black --check .
-
-# Run tests (if available)
-pytest
 ```
 
 ### Migration from Single to Multi-Account

@@ -35,8 +35,6 @@ class Account(Base):
         kind (str, optional): Mercury-specific account kind/category
         nickname (str, optional): User-defined account nickname
         legal_business_name (str, optional): Legal business name associated with account
-        receipt_required (str): Legacy receipt requirement setting - 'none', 'always', or 'threshold'
-        receipt_threshold (float, optional): Legacy dollar amount threshold for receipt requirement
         receipt_required_deposits (str): Receipt requirement for deposits - 'none', 'always', or 'threshold'
         receipt_threshold_deposits (float, optional): Dollar amount threshold for deposit receipt requirement
         receipt_required_charges (str): Receipt requirement for charges - 'none', 'always', or 'threshold'
@@ -72,11 +70,7 @@ class Account(Base):
     nickname = Column(String(255), nullable=True)  # Account nickname
     legal_business_name = Column(String(255), nullable=True)  # Legal business name
 
-    # Receipt requirement settings
-    receipt_required = Column(String(20), default="none")  # "none", "always", "threshold"
-    receipt_threshold = Column(Float, nullable=True)  # Dollar amount threshold for receipt requirement
-    
-    # Separate receipt requirements for deposits and charges
+    # Current receipt requirements for deposits and charges (separate rules)
     receipt_required_deposits = Column(String(20), default="none")  # "none", "always", "threshold"
     receipt_threshold_deposits = Column(Float, nullable=True)  # Dollar amount threshold for deposit receipt requirement
     receipt_required_charges = Column(String(20), default="none")  # "none", "always", "threshold"
@@ -117,7 +111,6 @@ class Account(Base):
         Check if a receipt is required for a given transaction amount.
         
         Uses separate rules for deposits (positive amounts) and charges (negative amounts).
-        Falls back to the original receipt_required setting if separate settings are not configured.
 
         Args:
             amount (float): Transaction amount to check
@@ -130,11 +123,11 @@ class Account(Base):
         
         # Get the appropriate receipt requirement setting
         if is_deposit:
-            receipt_required = self.receipt_required_deposits or self.receipt_required
-            receipt_threshold = self.receipt_threshold_deposits or self.receipt_threshold
+            receipt_required = self.receipt_required_deposits
+            receipt_threshold = self.receipt_threshold_deposits
         else:
-            receipt_required = self.receipt_required_charges or self.receipt_required
-            receipt_threshold = self.receipt_threshold_charges or self.receipt_threshold
+            receipt_required = self.receipt_required_charges
+            receipt_threshold = self.receipt_threshold_charges
         
         # Apply the logic
         if receipt_required == "none":

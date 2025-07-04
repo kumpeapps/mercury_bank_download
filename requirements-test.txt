@@ -1,0 +1,8 @@
+# Testing dependencies for Mercury Bank Integration Platform
+pytest>=7.4.0
+pytest-flask>=1.3.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.1
+pytest-xdist>=3.3.1  # For parallel test execution
+factory-boy>=3.3.0  # For test data factories
+coverage>=7.3.0
