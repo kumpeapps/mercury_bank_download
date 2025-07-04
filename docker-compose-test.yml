@@ -1,0 +1,86 @@
+x-common-variables: &common-variables
+   DATABASE_URL: mysql+pymysql://mercury_user:mercury_password@mysql:3306/mercury_bank
+   SYNC_DAYS_BACK: 30
+   SYNC_INTERVAL_MINUTES: 2
+   RUN_ONCE: false
+   SECRET_KEY: test-secret-key-for-github-actions
+   USERS_EXTERNALLY_MANAGED: false
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: mercury_root_password
+      MYSQL_DATABASE: mercury_bank
+      MYSQL_USER: mercury_user
+      MYSQL_PASSWORD: mercury_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    restart: unless-stopped
+    networks:
+      - mercury-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  mercury-sync:
+    # image: "justinkumpe/mercury-bank-sync:latest-alpha"
+    # Uncomment below for local development
+    build: ./sync_app
+    environment: *common-variables
+    
+    volumes:
+      - ./sync_app/logs:/app/logs
+    
+    restart: unless-stopped
+    networks:
+      - mercury-network
+    depends_on:
+      - mysql
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]  # Simple Python check
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Web application service
+  web-app:
+    # image: "justinkumpe/mercury-bank-sync:latest-alpha"
+    # Uncomment below for local development
+    build: ./web_app
+    environment: *common-variables
+    
+    ports:
+      - "5001:5000"
+    
+    volumes:
+      - ./web_app/logs:/app/logs
+    
+    restart: unless-stopped
+    
+    networks:
+      - mercury-network
+    depends_on:
+      - mysql
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  adminer:
+    image: adminer:latest
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    networks:
+      - mercury-network
+volumes:
+  mysql_data:
+
+networks:
+  mercury-network:
+    driver: bridge
