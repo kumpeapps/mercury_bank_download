@@ -10,7 +10,7 @@ Features:
 - Create sample data for testing
 - Interactive setup for production data
 - Password hashing utilities
-- Migration verification
+- Database verification
 """
 
 import os
@@ -65,15 +65,15 @@ def setup_database():
         raise
 
 
-def verify_migration(db: Session) -> bool:
+def verify_database(db: Session) -> bool:
     """
-    Verify that the database has been properly migrated.
+    Verify that the database has been properly set up.
 
     Args:
         db: Database session
 
     Returns:
-        bool: True if migration is complete
+        bool: True if database setup is complete
     """
     try:
         # Try to query each table to verify they exist
@@ -81,14 +81,14 @@ def verify_migration(db: Session) -> bool:
         mercury_account_count = db.query(MercuryAccount).count()
         account_count = db.query(Account).count()
 
-        print(f"✅ Migration verification successful:")
+        print(f"✅ Database verification successful:")
         print(f"   - Users: {user_count}")
         print(f"   - Mercury Accounts: {mercury_account_count}")
         print(f"   - Accounts: {account_count}")
 
         return True
     except Exception as e:
-        print(f"❌ Migration verification failed: {e}")
+        print(f"❌ Database verification failed: {e}")
         return False
 
 
@@ -339,9 +339,9 @@ def main():
     db = session_local()
 
     try:
-        # Verify migration
-        if not verify_migration(db):
-            print("❌ Database verification failed. Please run migration.sql first.")
+        # Verify database setup
+        if not verify_database(db):
+            print("❌ Database verification failed. Please check database setup.")
             sys.exit(1)
 
         # Initialize system settings

@@ -193,57 +193,16 @@ def initialize_system_settings():
         db_session.close()
 
 
-# Initialize database tables
-print(f"🔧 Initializing database with URL: {DATABASE_URL}")
+# Database initialization is handled by initial_setup.py during container startup
+# This ensures the schema is ready before the Flask app starts
+print("ℹ️  Database initialization is handled by initial_setup.py during startup")
 
-# Run migrations first
-print("🔄 Running database migrations...")
+# Initialize system settings in case they weren't created during setup
 try:
-    from migration_manager import MigrationManager
-
-    migration_manager = MigrationManager(DATABASE_URL)
-    if migration_manager.run_migrations():
-        print("✅ Database migrations completed successfully")
-    else:
-        print("❌ Database migrations failed")
-        exit(1)
-except Exception as e:
-    print(f"⚠️  Warning: Could not run migrations: {e}")
-    import traceback
-
-    traceback.print_exc()
-
-try:
-    # Import all models to ensure they're registered with Base.metadata
-    from models.user import User
-    from models.user_settings import UserSettings
-    from models.mercury_account import MercuryAccount
-    from models.account import Account
-    from models.transaction import Transaction
-    from models.system_setting import SystemSetting
-    from models.base import user_mercury_account_association
-
-    # Create all tables using the same engine as the Flask app
-    Base.metadata.create_all(bind=engine)
-    print("✅ Database tables initialized successfully")
-
-    # Verify system_settings table was created
-    with engine.connect() as conn:
-        result = conn.execute(text("SHOW TABLES LIKE 'system_settings'"))
-        if result.fetchone():
-            print("✅ system_settings table verified")
-        else:
-            print("❌ system_settings table not found")
-
-    # Initialize system settings
     initialize_system_settings()
-    print("✅ System settings initialized")
-
+    print("✅ System settings verified")
 except Exception as e:
-    print(f"⚠️  Warning: Could not initialize database tables: {e}")
-    import traceback
-
-    traceback.print_exc()
+    print(f"⚠️  Warning: Could not verify system settings: {e}")
 
 # Flask-Login setup
 login_manager = LoginManager()

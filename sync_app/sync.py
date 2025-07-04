@@ -25,7 +25,7 @@ from models.mercury_account import MercuryAccount
 from models.user import User
 from models.user_settings import UserSettings
 from models.system_setting import SystemSetting
-from models.base import create_engine_and_session, init_sync_db
+from models.base import create_engine_and_session
 
 # Configure logging
 logging.basicConfig(
@@ -62,9 +62,8 @@ class MercuryBankSyncer:
         No longer requires a single API key as it will iterate through all
         Mercury account groups stored in the database.
         """
-        # Initialize database
+        # Initialize database connection
         self.engine, self.session_local = create_engine_and_session()
-        init_sync_db()
 
         logger.info("Mercury Bank Syncer initialized")
 

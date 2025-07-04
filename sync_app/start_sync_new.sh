@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Main app startup script with automatic migrations using SQLAlchemy
-# This script ensures database migrations are run before starting the sync process
+# Main app startup script using SQLAlchemy only
+# This script creates the database schema and starts the sync process
 
 set -e  # Exit on any error
 
@@ -43,12 +43,22 @@ if [ $attempt -gt $max_attempts ]; then
     exit 1
 fi
 
-# Run database migrations
-echo "🔄 Running database migrations..."
-if python migration_manager.py; then
-    echo "✅ Database migrations completed successfully"
+# Create database schema using SQLAlchemy
+echo "🔄 Creating/updating database schema..."
+
+if python -c "
+from models.base import Base
+from sqlalchemy import create_engine
+import os
+
+database_url = os.environ.get('DATABASE_URL')
+engine = create_engine(database_url)
+Base.metadata.create_all(engine)
+print('Database schema created/updated successfully')
+"; then
+    echo "✅ Database schema ready"
 else
-    echo "❌ Database migrations failed"
+    echo "❌ Database schema creation failed"
     exit 1
 fi
 

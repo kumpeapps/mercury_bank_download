@@ -838,7 +838,7 @@ class MercurySyncCLI:
 
         while True:
             self._print_header("Database Tools")
-            print("1. Run database migrations")
+            print("1. Create/update database schema")
             print("2. Check database schema")
             print("3. Backup database")
             print("4. View database statistics")
@@ -847,7 +847,7 @@ class MercurySyncCLI:
             choice = self._get_input("\nSelect option (1-5): ")
 
             if choice == "1":
-                self._run_migrations()
+                self._create_schema()
             elif choice == "2":
                 self._check_schema()
             elif choice == "3":
@@ -862,25 +862,27 @@ class MercurySyncCLI:
             if choice != "5":
                 self._pause()
 
-    def _run_migrations(self):
-        """Run database migrations."""
-        self._print_info("Running database migrations...")
+    def _create_schema(self):
+        """Create or update database schema using SQLAlchemy."""
+        self._print_info("Creating/updating database schema...")
 
         try:
-            # Import and run migration manager
-            from migration_manager_sqlalchemy import run_migrations
+            from models.base import Base
+            from sqlalchemy import create_engine
+            import os
 
-            success = run_migrations()
+            database_url = os.environ.get('DATABASE_URL')
+            if not database_url:
+                self._print_error("DATABASE_URL environment variable not set")
+                return
 
-            if success:
-                self._print_success("Database migrations completed successfully")
-            else:
-                self._print_error("Some migrations failed")
+            engine = create_engine(database_url)
+            Base.metadata.create_all(engine)
+            
+            self._print_success("Database schema created/updated successfully")
 
-        except ImportError:
-            self._print_error("Migration manager not found")
         except Exception as e:
-            self._print_error(f"Error running migrations: {str(e)}")
+            self._print_error(f"Error creating schema: {str(e)}")
 
     def _check_schema(self):
         """Check database schema."""

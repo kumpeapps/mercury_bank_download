@@ -24,7 +24,6 @@ show_usage() {
     echo "  build          - Build local images"
     echo "  clean          - Clean up containers and volumes"
     echo "  reset-db       - Reset local MySQL database (WARNING: deletes all data)"
-    echo "  migrate        - Run database migrations"
     echo "  encrypt-keys   - Encrypt existing API keys"
     echo "  test-encrypt   - Test encryption functionality"
     echo ""
@@ -138,7 +137,7 @@ case "$1" in
             echo "Waiting for MySQL to be ready..."
             sleep 10
             
-            echo "Running migrations..."
+            echo "Restarting services..."
             docker-compose up -d mercury-sync web-app
             
             echo "✅ Database reset complete!"
@@ -146,12 +145,6 @@ case "$1" in
         else
             echo "Database reset cancelled."
         fi
-        ;;
-    
-    "migrate")
-        echo "Running database migrations..."
-        docker-compose exec mercury-sync python setup_db.py
-        docker-compose exec web-app python migration_manager.py
         ;;
     
     "encrypt-keys")
