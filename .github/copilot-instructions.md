@@ -14,11 +14,13 @@ This is a Mercury Bank Integration Platform consisting of two main components:
 
 ## Important Guidelines
 
-1. **Use SQLAlchemy for all database operations**
+1. **Database Migration System**
    - All database operations MUST use SQLAlchemy ORM
    - Do NOT use raw SQL or .sql files for schema changes or data modifications
-   - Database schema is created using SQLAlchemy's `create_all()` method
-   - Schema creation runs automatically at container startup
+   - Database schema is managed by **Alembic migrations** for production consistency
+   - Migrations run automatically inside Docker containers on startup
+   - For fresh installs: Schema is created via SQLAlchemy + stamped with latest migration
+   - For existing databases: Alembic upgrade applies pending migrations
 
 2. **Security Considerations**
    - API keys must be encrypted at rest using the encryption utilities
@@ -50,7 +52,11 @@ This is a Mercury Bank Integration Platform consisting of two main components:
 ## Common Tasks
 
 - **Add New Model**: Define in both sync_app/models/ and web_app/models/
-- **Database Changes**: Implement via SQLAlchemy model changes and rebuild containers
+- **Database Changes**: 
+  1. Update SQLAlchemy model definitions
+  2. Generate Alembic migration: `python migrate.py autogenerate --message "description"`
+  3. Review and test migration files
+  4. Rebuild containers using `./dev.sh rebuild-dev`
 - **Admin Settings**: Add to SystemSetting initialization in app.py
 - **API Key Management**: Use the encryption utilities for secure storage
 - **Applying Changes**: Always use `./dev.sh rebuild-dev` to rebuild and restart services
@@ -59,16 +65,69 @@ This is a Mercury Bank Integration Platform consisting of two main components:
 Use the `dev.sh` script for common development tasks such as:
 - Starting/stopping services: `./dev.sh start-dev`, `./dev.sh stop`
 - Building images: Use `./dev.sh rebuild-dev` to rebuild and restart development environment
-- Running schemas: Schema creation runs automatically at container startup
+- Running migrations: Migrations execute automatically at container startup
 - Resetting the database: `./dev.sh reset-db`
 - User and role management: Use the web interface at `/admin/users` for all user and role management tasks
 
-### Schema Creation Guidelines
-- Schema creation is performed automatically when containers start
-- Uses SQLAlchemy's `create_all()` method for automatic schema creation
+### Migration System Guidelines
+- Database schema is managed through **Alembic migrations** inside Docker containers
+- **Sync Service** is responsible for database schema management and migrations
+- **Web Service** uses the schema created by the sync service
+- Migration files are located in `sync_app/alembic/` and `web_app/alembic/` directories
+- Container startup workflow:
+  1. Check if `alembic_version` table exists
+  2. If exists → Run `alembic upgrade head` to apply pending migrations
+  3. If not exists → Create schema via SQLAlchemy + stamp with latest migration
 - Model changes require container rebuild using `./dev.sh rebuild-dev`
-- Schema changes should be made to SQLAlchemy model definitions
 - Always test schema changes in development using `./dev.sh rebuild-dev`
+
+## Migration Architecture
+
+### Container-Based Migration System
+The platform uses a production-ready migration system that runs inside Docker containers:
+
+#### Sync Service (Primary Database Manager)
+- **File**: `sync_app/start_sync.sh`
+- **Responsibility**: Database schema creation and migration management
+- **Startup Process**:
+  1. Wait for database connection
+  2. Check for `alembic_version` table existence
+  3. If table exists: Run `python migrate.py upgrade` (apply pending migrations)
+  4. If table missing: Create schema via SQLAlchemy + stamp with latest migration
+  5. Initialize system roles and start sync service
+
+#### Web Service (Secondary Consumer)
+- **File**: `web_app/start.sh`
+- **Responsibility**: Consumes database schema created by sync service
+- **Startup Process**:
+  1. Wait for database connection
+  2. Initialize roles (backup safety check)
+  3. Start Flask web application
+
+#### Migration File Structure
+```
+sync_app/
+├── alembic/
+│   ├── versions/          # Migration scripts
+│   ├── env.py            # Alembic environment configuration
+│   └── script.py.mako    # Migration template
+├── alembic.ini           # Alembic configuration
+├── migrate.py            # Migration helper script
+└── models/               # SQLAlchemy model definitions
+
+web_app/
+├── alembic/              # Mirror of sync_app alembic (for container availability)
+├── alembic.ini           # Mirror configuration
+├── migrate.py            # Mirror migration script
+└── models/               # Mirror model definitions
+```
+
+#### Key Benefits
+- **Production Ready**: Migrations run automatically in distributed containers
+- **Consistent Schema**: Single source of truth through sync service
+- **Zero Downtime**: Migrations apply automatically on container startup
+- **Rollback Capable**: Alembic supports schema version management
+- **Environment Agnostic**: Works in development, staging, and production
 
 ## Testing Framework
 

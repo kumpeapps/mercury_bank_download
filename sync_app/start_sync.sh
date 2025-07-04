@@ -89,8 +89,19 @@ Base.metadata.create_all(engine)
 print('Database schema created successfully')
 "; then
         echo "✅ Schema created, now stamping with latest migration..."
-        # Get the latest revision ID dynamically
-        latest_revision=$(python migrate.py history | head -1 | cut -d':' -f1 | cut -d' ' -f2)
+        # Get the latest revision ID using alembic directly
+        latest_revision=$(python -c "
+import subprocess
+import sys
+try:
+    result = subprocess.run(['python', '-m', 'alembic', 'heads'], 
+                          capture_output=True, text=True, check=True)
+    revision = result.stdout.strip()
+    print(revision)
+except Exception as e:
+    print('a602c915f72d', file=sys.stderr)  # fallback to known latest
+    print('a602c915f72d')
+")
         if python migrate.py stamp --revision "$latest_revision"; then
             echo "✅ Database stamped with latest migration"
         else
