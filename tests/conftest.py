@@ -310,12 +310,12 @@ def init_roles(test_db):
     from web_app.models.role import Role
     
     roles = [
-        Role(name="user", description="Basic user with read access to their own data", is_system_role=True),
-        Role(name="admin", description="Administrator with full system access", is_system_role=True),
-        Role(name="super-admin", description="Super administrator with all privileges including user management", is_system_role=True),
-        Role(name="reports", description="Access to all reports and analytics", is_system_role=True),
-        Role(name="transactions", description="Full access to transaction data", is_system_role=True),
-        Role(name="locked", description="Locked user account", is_system_role=True),
+        Role(name="user", description="Basic user with read access to their own data"),
+        Role(name="admin", description="Administrator with full system access"),
+        Role(name="super-admin", description="Super administrator with all privileges including user management"),
+        Role(name="reports", description="Access to all reports and analytics"),
+        Role(name="transactions", description="Full access to transaction data"),
+        Role(name="locked", description="Locked user account"),
     ]
     
     for role in roles:

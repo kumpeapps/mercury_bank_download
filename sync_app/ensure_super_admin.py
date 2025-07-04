@@ -61,14 +61,14 @@ def ensure_super_admin():
         
         # Get or create the super-admin, admin, and user roles
         user_role = Role.get_or_create(session, "user", 
-                                     "Basic user with read access to their own data", 
-                                     is_system_role=True)
+                                     "Basic user with read access to their own data")
+                                     # is_system_role=True)  # Temporarily disabled
         admin_role = Role.get_or_create(session, "admin", 
-                                       "Can manage Mercury accounts and account settings", 
-                                       is_system_role=True)
+                                       "Can manage Mercury accounts and account settings")
+                                       # is_system_role=True)  # Temporarily disabled
         super_admin_role = Role.get_or_create(session, "super-admin", 
-                                            "Full access to all system features including user management and system settings", 
-                                            is_system_role=True)
+                                            "Full access to all system features including user management and system settings")
+                                            # is_system_role=True)  # Temporarily disabled
         
         # Check if user already has super-admin role
         if user.is_super_admin:

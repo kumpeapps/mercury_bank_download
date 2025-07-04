@@ -193,7 +193,7 @@ class TestRoleManagement:
     def test_role_creation(self, test_db):
         """Test that roles can be created properly."""
         # Create role
-        role = Role(name="test_role", description="Test role description", is_system_role=False)
+        role = Role(name="test_role", description="Test role description")
         test_db.add(role)
         test_db.commit()
         
@@ -202,7 +202,6 @@ class TestRoleManagement:
         assert retrieved_role is not None
         assert retrieved_role.name == "test_role"
         assert retrieved_role.description == "Test role description"
-        assert retrieved_role.is_system_role is False
     
     def test_get_or_create_role(self, test_db):
         """Test the Role.get_or_create method."""
@@ -210,24 +209,20 @@ class TestRoleManagement:
         role1 = Role.get_or_create(
             test_db, 
             "new_role", 
-            "New role description", 
-            is_system_role=True
+            "New role description"
         )
         assert role1.name == "new_role"
-        assert role1.is_system_role is True
         
         # Test getting existing role
         role2 = Role.get_or_create(
             test_db, 
             "new_role", 
-            "Different description",  # This should be ignored
-            is_system_role=False  # This should be ignored
+            "Different description"  # This should be ignored
         )
         
         # Should return the same role instance
         assert role1.id == role2.id
         assert role2.description == "New role description"  # Original description preserved
-        assert role2.is_system_role is True  # Original value preserved
     
     def test_system_roles_initialization(self, test_db, init_roles):
         """Test that all required system roles are created."""
@@ -236,4 +231,3 @@ class TestRoleManagement:
         for role_name in required_roles:
             role = test_db.query(Role).filter_by(name=role_name).first()
             assert role is not None, f"Required role '{role_name}' not found"
-            assert role.is_system_role is True, f"Role '{role_name}' should be a system role"

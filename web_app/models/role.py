@@ -29,7 +29,7 @@ class Role(Base):
     id = Column(Integer, primary_key=True, autoincrement=True, nullable=False)
     name = Column(String(50), unique=True, nullable=False)
     description = Column(String(255), nullable=True)
-    is_system_role = Column(Boolean, default=False, nullable=False)
+    # is_system_role = Column(Boolean, default=False, nullable=False)  # Temporarily disabled - column doesn't exist in DB
     
     # Timestamps
     created_at = Column(
@@ -75,8 +75,8 @@ class Role(Base):
         if not role:
             role = cls(
                 name=name,
-                description=description,
-                is_system_role=is_system_role
+                description=description
+                # is_system_role=is_system_role  # Temporarily disabled - column doesn't exist in DB
             )
             session.add(role)
             session.flush()  # Flush to get the ID

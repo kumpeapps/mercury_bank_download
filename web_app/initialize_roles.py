@@ -20,33 +20,27 @@ def initialize_system_roles():
     standard_roles = [
         {
             "name": "user",
-            "description": "Basic user with read access to their own data",
-            "is_system_role": True
+            "description": "Basic user with read access to their own data"
         },
         {
             "name": "admin", 
-            "description": "Administrator with full system access",
-            "is_system_role": True
+            "description": "Administrator with full system access"
         },
         {
             "name": "super-admin",
-            "description": "Super administrator with all privileges including user management",
-            "is_system_role": True
+            "description": "Super administrator with all privileges including user management"
         },
         {
             "name": "reports",
-            "description": "Access to generate and view reports",
-            "is_system_role": True
+            "description": "Access to generate and view reports"
         },
         {
             "name": "transactions",
-            "description": "Access to view and manage transaction data",
-            "is_system_role": True
+            "description": "Access to view and manage transaction data"
         },
         {
             "name": "locked",
-            "description": "Locked user with no system access",
-            "is_system_role": True
+            "description": "Locked user with no system access"
         }
     ]
     
@@ -64,8 +58,7 @@ def initialize_system_roles():
                     # Create new role
                     role = Role(
                         name=role_data["name"],
-                        description=role_data["description"],
-                        is_system_role=role_data["is_system_role"]
+                        description=role_data["description"]
                     )
                     session.add(role)
                     created_count += 1
