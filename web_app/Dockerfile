@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     g++ \
     build-essential \
     libffi-dev \
+    nano \
     default-libmysqlclient-dev \
     curl \
     pkg-config \

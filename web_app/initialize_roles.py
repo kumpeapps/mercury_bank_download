@@ -20,27 +20,33 @@ def initialize_system_roles():
     standard_roles = [
         {
             "name": "user",
-            "description": "Basic user with read access to their own data"
+            "description": "Basic user with read access to their own data",
+            "is_system_role": True
         },
         {
             "name": "admin", 
-            "description": "Administrator with full system access"
+            "description": "Administrator with full system access",
+            "is_system_role": True
         },
         {
             "name": "super-admin",
-            "description": "Super administrator with all privileges including user management"
+            "description": "Super administrator with all privileges including user management",
+            "is_system_role": True
         },
         {
             "name": "reports",
-            "description": "Access to generate and view reports"
+            "description": "Access to generate and view reports",
+            "is_system_role": True
         },
         {
             "name": "transactions",
-            "description": "Access to view and manage transaction data"
+            "description": "Access to view and manage transaction data",
+            "is_system_role": True
         },
         {
             "name": "locked",
-            "description": "Locked user with no system access"
+            "description": "Locked user with no system access",
+            "is_system_role": True
         }
     ]
     
