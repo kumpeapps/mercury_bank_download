@@ -169,7 +169,6 @@ The `dev.sh` script provides convenient commands for local development:
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `MERCURY_API_KEY` | Mercury Bank API key | - | Single-account only |
 | `MERCURY_API_URL` | Mercury API endpoint | `https://api.mercury.com` | No |
 | `MERCURY_SANDBOX_MODE` | Use sandbox environment | `false` | No |
 | `DATABASE_URL` | Complete database connection string | - | Yes |
@@ -218,7 +217,6 @@ Users ←→ UserMercuryAccount ←→ MercuryAccounts
 | `first_name` | VARCHAR(100) | User's first name |
 | `last_name` | VARCHAR(100) | User's last name |
 | `is_active` | BOOLEAN | Account active status |
-| `is_admin` | BOOLEAN | Administrative privileges |
 | `last_login` | TIMESTAMP | Last login time |
 | `created_at` | TIMESTAMP | Record creation time |
 | `updated_at` | TIMESTAMP | Last update time |
@@ -350,6 +348,43 @@ LEFT JOIN accounts a ON ma.id = a.mercury_account_id
 GROUP BY ma.id;"
 ```
 
+### Database Migrations with Alembic
+
+This project uses [Alembic](https://alembic.sqlalchemy.org/) for database schema migrations. Alembic provides database-agnostic migration support for any database supported by SQLAlchemy.
+
+#### Quick Migration Commands
+
+```bash
+# Check current migration status
+python migrate.py status
+
+# Apply all pending migrations
+python migrate.py upgrade
+
+# Create a new migration for model changes
+python migrate.py autogenerate -m "Add new feature"
+
+# Test database connection
+python migrate.py test-connection
+```
+
+#### Docker Environment Migrations
+
+In Docker environments, migrations run automatically during container startup. For manual migration management:
+
+```bash
+# Run migrations in web container
+docker-compose exec web-app python migrate.py upgrade
+
+# Check migration status
+docker-compose exec web-app python migrate.py status
+
+# Create new migration
+docker-compose exec web-app python migrate.py autogenerate -m "Description"
+```
+
+For detailed migration documentation, see [docs/ALEMBIC_MIGRATION_GUIDE.md](docs/ALEMBIC_MIGRATION_GUIDE.md).
+
 ### Applying Changes Properly
 
 When making changes to the application, it's crucial to follow the correct procedure to ensure all components are properly rebuilt and synchronized:
@@ -409,7 +444,6 @@ services:
     build: .
     environment:
       - DATABASE_URL=mysql+pymysql://mercury:password@db:3306/mercury_bank
-      - MERCURY_API_KEY=${MERCURY_API_KEY}
       - SYNC_INTERVAL_MINUTES=5
     volumes:
       - ./logs:/app/logs
@@ -486,22 +520,55 @@ mercury_bank_download/
 
 ### Testing
 
+The platform includes a comprehensive test suite to ensure reliability and maintainability:
+
 ```bash
-# Run with sandbox mode
+# Run all tests with coverage
+./run_tests.sh
+
+# Run tests without coverage reporting
+./run_tests.sh --no-coverage
+
+# Run tests in verbose mode
+./run_tests.sh --verbose
+
+# Run specific test patterns
+./run_tests.sh --pattern="test_user*"
+
+# Run individual test categories
+python -m pytest tests/test_models.py          # Model tests
+python -m pytest tests/test_user_registration.py  # Registration tests
+python -m pytest tests/test_web_integration.py    # Web integration tests
+```
+
+#### Test Coverage
+- **38 test cases** covering critical functionality
+- **Model Tests** (17 tests) - Database models and relationships
+- **User Registration** (9 tests) - Role assignment and authentication
+- **Web Integration** (12 tests) - HTTP endpoints and user workflows
+
+#### Test Features
+- ✅ **Role Assignment Logic** - First user gets admin roles, others get user role
+- ✅ **Authentication Security** - Password hashing and session management
+- ✅ **Web Interface Testing** - Registration, login, and protected routes
+- ✅ **Database Validation** - Model relationships and constraints
+- ✅ **Error Handling** - Edge cases and validation scenarios
+- ✅ **CI/CD Integration** - Automated testing in GitHub Actions
+
+#### Development Testing
+```bash
+# Test sync service functionality
 MERCURY_SANDBOX_MODE=true python sync.py
 
 # Test with minimal data
 SYNC_DAYS_BACK=1 RUN_ONCE=true python sync.py
 
-# Run health check
+# Run health checks
 python health_check.py
 
-# Lint code
+# Code quality checks
 flake8 .
 black --check .
-
-# Run tests (if available)
-pytest
 ```
 
 ### Migration from Single to Multi-Account
@@ -518,7 +585,7 @@ python setup_db.py
 
 # 4. Update configuration
 cp docker-compose-example.yml docker-compose.yml
-# Edit DATABASE_URL and remove MERCURY_API_KEY
+# Edit DATABASE_URL and configure Mercury accounts via web interface
 
 # 5. Restart services
 docker-compose down
@@ -540,9 +607,6 @@ docker-compose up -d
 ### Debugging Commands
 
 ```bash
-# Check API connectivity
-curl -H "Authorization: Bearer $MERCURY_API_KEY" https://api.mercury.com/api/v1/accounts
-
 # Test database connection
 docker-compose exec mercury-sync python -c "
 from models.base import create_engine_and_session
@@ -550,11 +614,14 @@ engine, session = create_engine_and_session()
 print('Database connection successful')
 "
 
-# Validate configuration
-docker-compose exec mercury-sync python -c "
-import os
-print('API Key:', os.getenv('MERCURY_API_KEY', 'Not set'))
-print('Database URL:', os.getenv('DATABASE_URL', 'Not set'))
+# Check Mercury accounts configuration
+docker-compose exec web-app python -c "
+from models.mercury_account import MercuryAccount
+from models.base import create_engine_and_session
+engine, session = create_engine_and_session()
+accounts = session.query(MercuryAccount).all()
+print(f'Configured Mercury accounts: {len(accounts)}')
+for acc in accounts: print(f'- {acc.name}: {\"Active\" if acc.is_active else \"Inactive\"}')
 "
 ```
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Web app startup script with automatic migrations
-# This script ensures database migrations are run before starting the Flask application
+# Web app startup script
+# Database schema is managed by the sync service
 
 set -e  # Exit on any error
 
@@ -43,14 +43,8 @@ if [ $attempt -gt $max_attempts ]; then
     exit 1
 fi
 
-# Run database migrations
-echo "🔄 Running database migrations..."
-if python migration_manager.py; then
-    echo "✅ Database migrations completed successfully"
-else
-    echo "❌ Database migrations failed"
-    exit 1
-fi
+# Database initialization is handled by the sync service
+echo "ℹ️  Database schema is managed by the sync service"
 
 # Ensure super admin user is promoted (if specified)
 echo "👑 Checking super admin user..."

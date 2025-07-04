@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     libffi-dev \
     default-libmysqlclient-dev \
+    curl \
     pkg-config \
     python3-dev \
     && apt-get clean \
@@ -40,7 +41,7 @@ RUN chmod +x /app/health_check.py
 # Create a non-root user
 RUN useradd --create-home --shell /bin/bash app
 RUN chown -R app:app /app
-RUN chmod +x /app/start_new.sh
+RUN chmod +x /app/start.sh
 
 # Expose port
 EXPOSE 5000
@@ -52,5 +53,5 @@ USER app
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python3 health_check.py || exit 1
 
-# Run the application using the new SQLAlchemy-based startup script
-CMD ["./start_new.sh"]
+# Run the application
+CMD ["./start.sh"]

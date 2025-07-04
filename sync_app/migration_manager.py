@@ -245,6 +245,100 @@ class MigrationManager:
             logger.error("Migration process failed: %s", e)
             return False
 
+    def ensure_initial_schema(self) -> bool:
+        """Create initial schema if no tables exist yet."""
+        try:
+            # Check if any tables exist
+            with self.engine.connect() as conn:
+                result = conn.execute(text("SHOW TABLES"))
+                existing_tables = [row[0] for row in result.fetchall()]
+                
+            # If no tables exist, create the initial schema
+            if not existing_tables:
+                logger.info("No existing tables found, creating initial schema...")
+                
+                # Import all models to ensure they're registered with Base.metadata
+                from models.base import Base
+                from models.user import User
+                from models.user_settings import UserSettings
+                from models.mercury_account import MercuryAccount
+                from models.account import Account
+                from models.transaction import Transaction
+                from models.transaction_attachment import TransactionAttachment
+                from models.system_setting import SystemSetting
+                from models.role import Role
+                
+                # Create all tables
+                Base.metadata.create_all(bind=self.engine)
+                logger.info("✅ Initial schema created successfully")
+                
+                # Initialize default roles and system settings
+                self._initialize_default_data()
+                
+                return True
+            else:
+                logger.info(f"Found {len(existing_tables)} existing tables, skipping initial schema creation")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error ensuring initial schema: {e}")
+            return False
+
+    def _initialize_default_data(self):
+        """Initialize default roles and system settings."""
+        session = self.Session()
+        try:
+            # Create default roles if they don't exist
+            from models.role import Role
+            
+            default_roles = ['user', 'admin', 'super-admin', 'reports', 'locked']
+            for role_name in default_roles:
+                if not session.query(Role).filter_by(name=role_name).first():
+                    role = Role(name=role_name)
+                    session.add(role)
+                    logger.info(f"Created default role: {role_name}")
+            
+            # Create default system settings
+            from models.system_setting import SystemSetting
+            import os
+            
+            # Check if users are externally managed
+            users_externally_managed = (
+                os.environ.get("USERS_EXTERNALLY_MANAGED", "false").lower() == "true"
+            )
+            
+            default_settings = [
+                ("registration_enabled", "true", "Whether new user registration is enabled", True),
+                ("prevent_user_deletion", "false", "Prevent administrators from deleting user accounts", True),
+                ("users_externally_managed", str(users_externally_managed).lower(), 
+                 "Users are managed by an external system (locks user management settings)", False),
+                ("app_name", "Mercury Bank Integration", 
+                 "The name of the application displayed in the header and page titles", True),
+                ("app_description", "Mercury Bank data synchronization and management platform", 
+                 "Description of the application displayed on the login page and dashboard", True),
+                ("logo_url", "", 
+                 "URL to the application logo image (leave empty for default logo)", True),
+            ]
+            
+            for key, value, description, is_editable in default_settings:
+                if not session.query(SystemSetting).filter_by(key=key).first():
+                    setting = SystemSetting(
+                        key=key,
+                        value=value,
+                        description=description,
+                        is_editable=is_editable,
+                    )
+                    session.add(setting)
+                    logger.info(f"Created system setting: {key} = {value}")
+            
+            session.commit()
+            logger.info("✅ Default data initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Error initializing default data: {e}")
+            session.rollback()
+        finally:
+            session.close()
 
 def run_migrations_from_env():
     """Run migrations using environment variables for database connection."""

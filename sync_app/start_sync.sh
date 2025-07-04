@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Main app startup script with automatic migrations
-# This script ensures database migrations are run before starting the sync process
+# Main app startup script using SQLAlchemy only
+# This script creates the database schema and starts the sync process
 
 set -e  # Exit on any error
 
@@ -15,49 +15,14 @@ attempt=1
 while [ $attempt -le $max_attempts ]; do
     if python -c "
 import os
-import mysql.connector
-from mysql.connector import Error
+from sqlalchemy import create_engine, text
 
 database_url = os.environ.get('DATABASE_URL', 'mysql+pymysql://user:password@db:3306/mercury_bank')
 
-# Parse database URL
-if database_url.startswith('mysql+pymysql://'):
-    url = database_url.replace('mysql+pymysql://', '')
-elif database_url.startswith('mysql://'):
-    url = database_url.replace('mysql://', '')
-else:
-    exit(1)
-
 try:
-    auth_host, database = url.split('/', 1)
-    auth, host_port = auth_host.split('@', 1)
-    
-    if ':' in auth:
-        user, password = auth.split(':', 1)
-    else:
-        user = auth
-        password = ''
-
-    if ':' in host_port:
-        host, port_str = host_port.split(':', 1)
-        port = int(port_str)
-    else:
-        host = host_port
-        port = 3306
-
-    connection = mysql.connector.connect(
-        host=host,
-        port=port,
-        user=user,
-        password=password,
-        database=database,
-        connection_timeout=5,
-        charset='utf8mb4',
-        collation='utf8mb4_general_ci',
-        use_unicode=True,
-        auth_plugin='mysql_native_password'
-    )
-    connection.close()
+    engine = create_engine(database_url, connect_args={'connect_timeout': 5})
+    with engine.connect() as connection:
+        connection.execute(text('SELECT 1'))
     print('Database connection successful')
     exit(0)
 except Exception as e:
@@ -78,15 +43,90 @@ if [ $attempt -gt $max_attempts ]; then
     exit 1
 fi
 
-# Run database migrations
+# Run database migrations using Alembic
 echo "🔄 Running database migrations..."
-if python migration_manager.py; then
-    echo "✅ Database migrations completed successfully"
+
+# Check if alembic_version table exists (indicates if migrations have been run)
+if python -c "
+from sqlalchemy import create_engine, text
+import os
+
+database_url = os.environ.get('DATABASE_URL')
+engine = create_engine(database_url)
+
+try:
+    with engine.connect() as conn:
+        result = conn.execute(text('SHOW TABLES LIKE \"alembic_version\"'))
+        tables = result.fetchall()
+        if len(tables) > 0:
+            print('Migration table exists')
+            exit(0)
+        else:
+            print('Migration table does not exist')
+            exit(1)
+except Exception as e:
+    print(f'Error checking migration table: {e}')
+    exit(1)
+"; then
+    echo "� Migration table exists, running upgrade..."
+    if python migrate.py upgrade; then
+        echo "✅ Database migrations completed"
+    else
+        echo "❌ Database migration failed"
+        exit 1
+    fi
 else
-    echo "❌ Database migrations failed"
+    echo "🆕 First run detected, creating schema and stamping with latest migration..."
+    # For fresh installs, create the schema first, then stamp with latest migration
+    if python -c "
+from models.base import Base
+from sqlalchemy import create_engine
+import os
+
+database_url = os.environ.get('DATABASE_URL')
+engine = create_engine(database_url)
+Base.metadata.create_all(engine)
+print('Database schema created successfully')
+"; then
+        echo "✅ Schema created, now stamping with latest migration..."
+        # Get the latest revision ID using alembic directly
+        latest_revision=$(python -c "
+import subprocess
+import sys
+try:
+    result = subprocess.run(['python', '-m', 'alembic', 'heads'], 
+                          capture_output=True, text=True, check=True)
+    revision = result.stdout.strip().split()[0]  # Get only the revision ID, not '(head)'
+    print(revision)
+except Exception as e:
+    print('a602c915f72d', file=sys.stderr)  # fallback to known latest
+    print('a602c915f72d')
+")
+        if python migrate.py stamp --revision "$latest_revision"; then
+            echo "✅ Database stamped with latest migration"
+        else
+            echo "❌ Failed to stamp database with migration"
+            exit 1
+        fi
+    else
+        echo "❌ Database schema creation failed"
+        exit 1
+    fi
+fi
+
+# Initialize system roles
+echo "🔧 Initializing system roles..."
+if python initialize_roles.py; then
+    echo "✅ System roles initialized"
+else
+    echo "❌ Role initialization failed"
     exit 1
 fi
 
-# Start the sync process
-echo "🔄 Starting sync process..."
+# Ensure super admin user is promoted (if specified)
+echo "👑 Checking super admin user..."
+python ensure_super_admin.py
+
+# Start the sync service
+echo "🔄 Starting sync service..."
 exec python sync.py

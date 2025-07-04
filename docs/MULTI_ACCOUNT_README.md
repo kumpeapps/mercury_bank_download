@@ -25,7 +25,6 @@ class User(Base):
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True)
-    is_admin = Column(Boolean, default=False)
     last_login = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"))
     updated_at = Column(DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), onupdate=text("CURRENT_TIMESTAMP"))
@@ -152,8 +151,8 @@ user = User(
     password_hash=password_hash,
     first_name="John",
     last_name="Doe",
-    is_active=True,
-    is_admin=False
+    is_active=True
+)
 )
 
 # Associate user with Mercury account groups

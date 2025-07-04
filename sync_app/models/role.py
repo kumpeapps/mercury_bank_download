@@ -1,17 +1,8 @@
 """Role model for role-based access control."""
 
-from sqlalchemy import Column, String, DateTime, Boolean, text, Integer, Table, ForeignKey
+from sqlalchemy import Column, String, DateTime, Boolean, text, Integer
 from sqlalchemy.orm import relationship
-from .base import Base
-
-
-# Association table for many-to-many relationship between users and roles
-user_role_association = Table(
-    "user_roles",
-    Base.metadata,
-    Column("user_id", Integer, ForeignKey("users.id"), primary_key=True),
-    Column("role_id", Integer, ForeignKey("roles.id"), primary_key=True),
-)
+from .base import Base, user_role_association
 
 
 class Role(Base):

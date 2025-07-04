@@ -33,7 +33,10 @@ def ensure_first_user_is_admin():
 
         print("Checking user admin status...")
 
-        # Get or create admin and super-admin roles
+        # Get or create admin, super-admin, and user roles
+        user_role = Role.get_or_create(session, "user", 
+                                       "Basic user with read access to their own data", 
+                                       is_system_role=True)
         admin_role = Role.get_or_create(session, "admin", 
                                         "Can manage Mercury accounts and account settings", 
                                         is_system_role=True)
@@ -60,21 +63,26 @@ def ensure_first_user_is_admin():
         if not first_user:
             print("No users found in the system.")
             return True
-
+            
         print(f"Promoting first user '{first_user.username}' to super-admin...")
-
-        # Add super-admin role to first user
-        first_user.add_role(super_admin_role, session)
         
-        # For backward compatibility, also set is_admin in user settings
+        # Add user role (baseline for all users)
+        if user_role not in first_user.roles:
+            first_user.roles.append(user_role)
+        
+        # Add super-admin role to first user
+        if super_admin_role not in first_user.roles:
+            first_user.roles.append(super_admin_role)
+        
+        # Also add admin role for extra access
+        if admin_role not in first_user.roles:
+            first_user.roles.append(admin_role)
+        
+        # Create user settings if they don't exist
         if not first_user.settings:
-            # Create settings with admin privileges
-            user_settings = UserSettings(user_id=first_user.id, is_admin=True)
+            user_settings = UserSettings(user_id=first_user.id)
             session.add(user_settings)
-        else:
-            # Update existing settings
-            first_user.settings.is_admin = True
-
+        
         session.commit()
         print(f"✓ User '{first_user.username}' has been promoted to super-admin!")
         return True

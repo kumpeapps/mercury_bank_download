@@ -45,42 +45,62 @@
                 <!-- Edit Form -->
                 <form method="POST">
 
-                    <hr>
-
                     <!-- Receipt Requirements Section -->
                     <div class="mb-4">
                         <h6 class="text-muted">Receipt Requirements</h6>
+                        
+                        <!-- Deposits Receipt Requirements -->
                         <div class="mb-3">
-                            <label for="receipt_required" class="form-label">Receipt Requirement</label>
-                            <select class="form-select" id="receipt_required" name="receipt_required">
-                                <option value="none" {{ 'selected' if account.receipt_required == 'none' else '' }}>
-                                    No receipt required
+                            <label for="receipt_required_deposits" class="form-label">
+                                <strong>Receipt Requirements for Deposits</strong>
+                            </label>
+                            <select class="form-select" id="receipt_required_deposits" name="receipt_required_deposits">
+                                <option value="none" {{ 'selected' if account.receipt_required_deposits == 'none' else '' }}>
+                                    No receipts required
                                 </option>
-                                <option value="always" {{ 'selected' if account.receipt_required == 'always' else '' }}>
-                                    Always require receipt
+                                <option value="always" {{ 'selected' if account.receipt_required_deposits == 'always' else '' }}>
+                                    Always require receipts
                                 </option>
-                                <option value="threshold" {{ 'selected' if account.receipt_required == 'threshold' else '' }}>
-                                    Require receipt above dollar amount
+                                <option value="threshold" {{ 'selected' if account.receipt_required_deposits == 'threshold' else '' }}>
+                                    Require receipts above threshold
                                 </option>
                             </select>
-                            <div class="form-text">
-                                Set when receipts are required for transactions on this account.
-                            </div>
                         </div>
 
-                        <div class="mb-3" id="threshold-input" style="display: {{ 'block' if account.receipt_required == 'threshold' else 'none' }};">
-                            <label for="receipt_threshold" class="form-label">Receipt Threshold ($)</label>
-                            <input type="number" step="0.01" min="0" class="form-control" 
-                                   id="receipt_threshold" name="receipt_threshold" 
-                                   value="{{ account.receipt_threshold or '' }}" 
-                                   placeholder="0.00">
-                            <div class="form-text">
-                                Receipts will be required for transactions with an absolute value at or above this amount.
-                            </div>
+                        <!-- Deposits Threshold -->
+                        <div class="mb-3" id="deposits_threshold_section" style="display: {{ 'block' if account.receipt_required_deposits == 'threshold' else 'none' }};">
+                            <label for="receipt_threshold_deposits" class="form-label">Deposit Receipt Threshold ($)</label>
+                            <input type="number" class="form-control" id="receipt_threshold_deposits" name="receipt_threshold_deposits"
+                                   value="{{ account.receipt_threshold_deposits or '' }}" step="0.01" min="0">
+                            <div class="form-text">Require receipts for deposits above this amount</div>
+                        </div>
+
+                        <!-- Charges Receipt Requirements -->
+                        <div class="mb-3">
+                            <label for="receipt_required_charges" class="form-label">
+                                <strong>Receipt Requirements for Charges</strong>
+                            </label>
+                            <select class="form-select" id="receipt_required_charges" name="receipt_required_charges">
+                                <option value="none" {{ 'selected' if account.receipt_required_charges == 'none' else '' }}>
+                                    No receipts required
+                                </option>
+                                <option value="always" {{ 'selected' if account.receipt_required_charges == 'always' else '' }}>
+                                    Always require receipts
+                                </option>
+                                <option value="threshold" {{ 'selected' if account.receipt_required_charges == 'threshold' else '' }}>
+                                    Require receipts above threshold
+                                </option>
+                            </select>
+                        </div>
+
+                        <!-- Charges Threshold -->
+                        <div class="mb-3" id="charges_threshold_section" style="display: {{ 'block' if account.receipt_required_charges == 'threshold' else 'none' }};">
+                            <label for="receipt_threshold_charges" class="form-label">Charge Receipt Threshold ($)</label>
+                            <input type="number" class="form-control" id="receipt_threshold_charges" name="receipt_threshold_charges"
+                                   value="{{ account.receipt_threshold_charges or '' }}" step="0.01" min="0">
+                            <div class="form-text">Require receipts for charges above this amount</div>
                         </div>
                     </div>
-
-                    <hr>
 
                     <!-- Report Visibility Section -->
                     <div class="mb-4">
@@ -116,20 +136,38 @@
     </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const receiptRequiredSelect = document.getElementById('receipt_required');
-    const thresholdInput = document.getElementById('threshold-input');
+    // Handle deposits receipt requirement changes
+    const depositsSelect = document.getElementById('receipt_required_deposits');
+    const depositsThresholdSection = document.getElementById('deposits_threshold_section');
     
-    function toggleThresholdInput() {
-        if (receiptRequiredSelect.value === 'threshold') {
-            thresholdInput.style.display = 'block';
+    function toggleDepositsThreshold() {
+        if (depositsSelect.value === 'threshold') {
+            depositsThresholdSection.style.display = 'block';
         } else {
-            thresholdInput.style.display = 'none';
+            depositsThresholdSection.style.display = 'none';
         }
     }
     
-    receiptRequiredSelect.addEventListener('change', toggleThresholdInput);
+    depositsSelect.addEventListener('change', toggleDepositsThreshold);
+    
+    // Handle charges receipt requirement changes
+    const chargesSelect = document.getElementById('receipt_required_charges');
+    const chargesThresholdSection = document.getElementById('charges_threshold_section');
+    
+    function toggleChargesThreshold() {
+        if (chargesSelect.value === 'threshold') {
+            chargesThresholdSection.style.display = 'block';
+        } else {
+            chargesThresholdSection.style.display = 'none';
+        }
+    }
+    
+    chargesSelect.addEventListener('change', toggleChargesThreshold);
 });
 </script>
 {% endblock %}

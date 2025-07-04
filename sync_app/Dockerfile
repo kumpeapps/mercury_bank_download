@@ -40,7 +40,7 @@ RUN adduser --disabled-password --gecos '' appuser && \
     chown -R appuser:appuser /app && \
     chmod -R 755 /app && \
     chmod +x /app/*.py && \
-    chmod +x /app/start.sh
+    chmod +x /app/start_sync.sh
 
 # Switch to non-root user
 USER appuser
@@ -50,4 +50,4 @@ HEALTHCHECK --interval=5m --timeout=30s --start-period=30s --retries=3 \
     CMD python health_check.py
 
 # Default command
-CMD ["./start.sh"]
+CMD ["./start_sync.sh"]

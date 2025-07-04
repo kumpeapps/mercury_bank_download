@@ -2,9 +2,9 @@
 
 echo "🚀 Starting Mercury Bank Sync Service..."
 
-# Run migrations
+# Run database migrations with Alembic
 echo "🔄 Running database migrations..."
-python migration_manager.py
+alembic upgrade head
 
 # Start the sync service
 echo "📊 Starting sync process..."

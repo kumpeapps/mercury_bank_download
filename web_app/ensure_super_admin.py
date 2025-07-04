@@ -50,7 +50,13 @@ def ensure_super_admin():
             print("User must be created first through registration or admin tools")
             return True  # Not an error - user just doesn't exist yet
         
-        # Get or create the super-admin role
+        # Get or create the super-admin, admin, and user roles
+        user_role = Role.get_or_create(session, "user", 
+                                     "Basic user with read access to their own data", 
+                                     is_system_role=True)
+        admin_role = Role.get_or_create(session, "admin", 
+                                       "Can manage Mercury accounts and account settings", 
+                                       is_system_role=True)
         super_admin_role = Role.get_or_create(session, "super-admin", 
                                             "Full access to all system features including user management and system settings", 
                                             is_system_role=True)
@@ -59,29 +65,39 @@ def ensure_super_admin():
         if user.is_super_admin:
             print(f"✓ User '{super_admin_username}' already has super-admin role")
             
-            # Ensure user also has admin flag set (for backward compatibility)
-            if not user.settings or not user.settings.is_admin:
-                if not user.settings:
-                    user_settings = UserSettings(user_id=user.id, is_admin=True)
-                    session.add(user_settings)
-                else:
-                    user.settings.is_admin = True
+            # Ensure user also has the basic "user" role (all users should have this)
+            if user_role not in user.roles:
+                user.roles.append(user_role)
                 session.commit()
-                print(f"✓ Updated user settings for '{super_admin_username}' to include admin flag")
+                print(f"✓ Added user role to '{super_admin_username}'")
+            
+            # Ensure user has settings
+            if not user.settings:
+                user_settings = UserSettings(user_id=user.id)
+                session.add(user_settings)
+                session.commit()
+                print(f"✓ Created user settings for '{super_admin_username}'")
                 
             return True
         
         print(f"Promoting user '{super_admin_username}' to super-admin...")
         
-        # Add super-admin role
-        user.add_role(super_admin_role, session)
+        # Add user role (baseline for all users)
+        if user_role not in user.roles:
+            user.roles.append(user_role)
+            
+        # Add super-admin role if not already present
+        if super_admin_role not in user.roles:
+            user.roles.append(super_admin_role)
         
-        # Ensure user has admin flag set (for backward compatibility)
+        # Also add admin role for extra access
+        if admin_role not in user.roles:
+            user.roles.append(admin_role)
+        
+        # Ensure user has settings
         if not user.settings:
-            user_settings = UserSettings(user_id=user.id, is_admin=True)
+            user_settings = UserSettings(user_id=user.id)
             session.add(user_settings)
-        else:
-            user.settings.is_admin = True
         
         session.commit()
         print(f"✓ Super admin user '{super_admin_username}' promoted to super-admin!")

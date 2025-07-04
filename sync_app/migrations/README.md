@@ -1,171 +1,108 @@
-# Database Migration System
+# Database Migrations
 
-This directory contains the automatic database migration system for the Mercury Bank application.
+This directory contains database migration files for the Mercury Bank Integration Platform.
 
-## Overview
+## Migration System Overview
 
-The migration system automatically runs database schema changes when the Docker containers start, ensuring your database is always up to date with the latest schema requirements. 
+The migration system is designed to handle database schema changes across different releases while maintaining data integrity and allowing for rollbacks when necessary.
 
-**Key Features:**
-- **Database Agnostic**: Uses SQLAlchemy for compatibility with MySQL, PostgreSQL, SQLite, and more
-- **Universal Support**: Works with any SQLAlchemy-supported database without modification
-- **Backward Compatible**: Supports older MySQL/MariaDB versions by using TEXT instead of JSON columns
+## First Production Release (v1.0)
 
-## How It Works
+For the first production release, we use SQLAlchemy's `create_all()` approach to establish the complete initial schema. This is handled by the `initial_setup.py` script which creates:
 
-1. **Automatic Execution**: Migrations run automatically when containers start
-2. **Tracking**: Each migration is tracked in a `migrations` table to prevent re-execution
-3. **Validation**: Migration files are checksummed to detect unauthorized changes
-4. **Sequential**: Migrations run in alphabetical order by filename
+- All database tables using SQLAlchemy models
+- Initial system roles (user, admin, super-admin, reports)
+- Initial system settings
+- Proper foreign key relationships and constraints
 
-## Migration Files
+## Future Releases
 
-Migration files are stored in the `migrations/` directory and follow this naming convention:
+Starting from v1.1, all database changes should be implemented as migration files in this directory following the pattern:
+
 ```
-NNN_description.sql
-```
-
-Where:
-- `NNN` is a zero-padded sequence number (001, 002, etc.)
-- `description` is a brief description of the migration
-- `.sql` extension indicates it's a SQL migration file
-
-### Example Migration File
-
-**001_add_user_settings_table.sql**
-```sql
--- Migration: 001_add_user_settings_table.sql
--- Description: Add user_settings table for storing user preferences
-
-CREATE TABLE user_settings (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    user_id INT NOT NULL UNIQUE,
-    primary_mercury_account_id INT NULL,
-    -- ... more columns
-);
-
--- Add indexes
-CREATE INDEX idx_user_settings_user_id ON user_settings(user_id);
+001_descriptive_migration_name.py
+002_another_migration_name.py
+...
 ```
 
-## Current Migrations
+### Migration File Structure
 
-### 001_add_user_settings_table.sql
-- **Purpose**: Creates the `user_settings` table for storing user preferences
-- **Features**:
-  - Primary Mercury account selection
-  - JSON fields for flexible preference storage
-  - Foreign key constraints with proper cascading
-  - Performance indexes
+Each migration file should follow this template:
 
-## Usage
+```python
+"""
+Migration: [Description of what this migration does]
+Created: [Date]
+"""
 
-### Automatic (Recommended)
-Migrations run automatically when you start the Docker containers:
+def upgrade(engine):
+    """
+    Apply the migration
+    """
+    # Implementation here
+    pass
 
-```bash
-docker-compose up -d
+def downgrade(engine):
+    """
+    Rollback the migration
+    """
+    # Implementation here
+    pass
 ```
 
-### Manual Testing
-You can test the migration system manually:
+### Migration Guidelines
 
-```bash
-# Test migration system
-python test_migrations.py
+1. **Always include both upgrade() and downgrade() functions**
+2. **Use SQLAlchemy operations when possible** rather than raw SQL
+3. **Test migrations thoroughly** in development environment
+4. **Make migrations idempotent** - they should be safe to run multiple times
+5. **Include proper error handling** and logging
+6. **Document breaking changes** in migration comments
 
-# Run migrations manually
-python migration_manager.py
-```
+### Running Migrations
 
-### Creating New Migrations
+Migrations are automatically executed during container startup by the migration manager. The system:
 
-1. Create a new `.sql` file in the `migrations/` directory
-2. Use the next sequential number: `002_your_description.sql`
-3. Include a comment header describing the migration
-4. Write your SQL statements
-5. Test locally before deploying
+1. Checks for pending migrations
+2. Executes them in order
+3. Records successful migrations in the `migrations` table
+4. Provides rollback capabilities if needed
 
-**Example:**
-```sql
--- Migration: 002_add_audit_table.sql
--- Description: Add audit logging table for tracking user actions
+### Migration Manager
 
-CREATE TABLE audit_log (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    user_id INT NOT NULL,
-    action VARCHAR(100) NOT NULL,
-    details JSON NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
+The migration manager (`migration_manager.py`) handles:
 
-CREATE INDEX idx_audit_log_user_id ON audit_log(user_id);
-CREATE INDEX idx_audit_log_created_at ON audit_log(created_at);
-```
+- Tracking which migrations have been applied
+- Executing pending migrations in the correct order
+- Logging migration results
+- Providing rollback functionality
+- Ensuring database consistency
 
-## Database Schema Tracking
+## Development Workflow
 
-The migration system creates a `migrations` table to track executed migrations:
+1. **For the first release**: Use `initial_setup.py` to create the base schema
+2. **For future releases**: Create new migration files in this directory
+3. **Test locally**: Use `./dev.sh reset-db` to test with fresh database
+4. **Validate in staging**: Ensure migrations work with existing data
+5. **Deploy to production**: Migrations run automatically during deployment
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | INT | Primary key |
-| filename | VARCHAR(255) | Migration filename |
-| checksum | VARCHAR(64) | MD5 hash of file content |
-| executed_at | TIMESTAMP | When migration was executed |
+## Database Schema Evolution
 
-## Safety Features
+The schema will evolve through migrations, with each migration building upon the previous state. The migration system ensures:
 
-1. **Checksum Validation**: Detects if migration files are modified after execution
-2. **Transaction Safety**: Each migration runs in a transaction (where possible)
-3. **Error Handling**: Detailed error logging and graceful failure handling
-4. **Idempotent**: Safe to run multiple times - already executed migrations are skipped
+- **Version control**: Each database change is tracked and versioned
+- **Consistency**: All environments can be brought to the same schema state
+- **Rollback capability**: Changes can be undone if issues arise
+- **Data preservation**: Migrations handle data transformations safely
 
 ## Troubleshooting
 
-### Migration Fails to Execute
+If you encounter migration issues:
+
 1. Check the application logs for detailed error messages
-2. Verify database connectivity
-3. Ensure migration SQL syntax is correct
-4. Check database permissions
+2. Verify the migration file syntax and logic
+3. Test the migration in a development environment
+4. Use the rollback functionality if needed
+5. Consult the migration history in the `migrations` table
 
-### Migration File Modified Error
-If you see a "migration file modified" error:
-1. **DO NOT** modify executed migration files
-2. Create a new migration file to make additional changes
-3. If absolutely necessary, manually update the checksum in the database
-
-### Reset Migrations (Development Only)
-**⚠️ WARNING: This will lose all data!**
-
-```sql
--- Drop migrations table to reset tracking
-DROP TABLE IF EXISTS migrations;
-
--- Drop and recreate database
-DROP DATABASE mercury_bank;
-CREATE DATABASE mercury_bank;
-```
-
-## Best Practices
-
-1. **Never modify executed migrations** - create new ones instead
-2. **Test migrations locally** before deploying
-3. **Keep migrations small and focused** - one logical change per migration
-4. **Include rollback instructions** in comments (for manual rollback if needed)
-5. **Use descriptive filenames** - make it clear what the migration does
-6. **Include proper indexes** for performance
-7. **Use appropriate foreign key constraints** with cascading rules
-
-## Integration with Docker
-
-The migration system is integrated into the Docker startup process:
-
-1. **Web App Container**: Runs migrations before starting Flask
-2. **Sync Container**: Runs migrations before starting sync process
-3. **Database Ready Check**: Waits for database to be available
-4. **Failure Handling**: Container exits if migrations fail
-
-This ensures your application always has the correct database schema when it starts.
+For production issues, refer to the deployment documentation for recovery procedures.

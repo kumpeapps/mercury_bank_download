@@ -24,7 +24,7 @@ from flask_login import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 from sqlalchemy import create_engine, func, extract, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, joinedload
 from datetime import datetime, timedelta
 from functools import wraps
 import os
@@ -32,6 +32,7 @@ import json
 import csv
 import io
 import logging
+import hashlib
 from collections import defaultdict
 from functools import wraps
 
@@ -159,10 +160,10 @@ def initialize_system_settings():
                 print(f"✅ Updated users_externally_managed setting to: {value}")
                 
         # Apply fallback logic: if no admin users exist, enable registration regardless of settings
+        from models.role import Role
         admin_count = (
             db_session.query(User)
-            .join(UserSettings)
-            .filter(UserSettings.is_admin == True)
+            .filter(User.roles.any(Role.name.in_(["admin", "super-admin"])))
             .count()
         )
         
@@ -192,57 +193,16 @@ def initialize_system_settings():
         db_session.close()
 
 
-# Initialize database tables
-print(f"🔧 Initializing database with URL: {DATABASE_URL}")
+# Database initialization is handled by initial_setup.py during container startup
+# This ensures the schema is ready before the Flask app starts
+print("ℹ️  Database initialization is handled by initial_setup.py during startup")
 
-# Run migrations first
-print("🔄 Running database migrations...")
+# Initialize system settings in case they weren't created during setup
 try:
-    from migration_manager import MigrationManager
-
-    migration_manager = MigrationManager(DATABASE_URL)
-    if migration_manager.run_migrations():
-        print("✅ Database migrations completed successfully")
-    else:
-        print("❌ Database migrations failed")
-        exit(1)
-except Exception as e:
-    print(f"⚠️  Warning: Could not run migrations: {e}")
-    import traceback
-
-    traceback.print_exc()
-
-try:
-    # Import all models to ensure they're registered with Base.metadata
-    from models.user import User
-    from models.user_settings import UserSettings
-    from models.mercury_account import MercuryAccount
-    from models.account import Account
-    from models.transaction import Transaction
-    from models.system_setting import SystemSetting
-    from models.base import user_mercury_account_association
-
-    # Create all tables using the same engine as the Flask app
-    Base.metadata.create_all(bind=engine)
-    print("✅ Database tables initialized successfully")
-
-    # Verify system_settings table was created
-    with engine.connect() as conn:
-        result = conn.execute(text("SHOW TABLES LIKE 'system_settings'"))
-        if result.fetchone():
-            print("✅ system_settings table verified")
-        else:
-            print("❌ system_settings table not found")
-
-    # Initialize system settings
     initialize_system_settings()
-    print("✅ System settings initialized")
-
+    print("✅ System settings verified")
 except Exception as e:
-    print(f"⚠️  Warning: Could not initialize database tables: {e}")
-    import traceback
-
-    traceback.print_exc()
+    print(f"⚠️  Warning: Could not verify system settings: {e}")
 
 # Flask-Login setup
 login_manager = LoginManager()
@@ -254,7 +214,8 @@ login_manager.login_view = "login"
 def load_user(user_id):
     db_session = Session()
     try:
-        user = db_session.query(User).get(int(user_id))
+        # Eagerly load the user and roles to avoid DetachedInstanceError
+        user = db_session.query(User).options(joinedload(User.roles)).filter(User.id == int(user_id)).first()
         if user:
             # Make the user object detached from this session to avoid conflicts
             db_session.expunge(user)
@@ -414,6 +375,20 @@ def is_signup_enabled():
         db_session.close()
 
 
+def get_gravatar_url(email, size=40, default='identicon'):
+    """Generate a Gravatar URL for the given email address."""
+    if not email:
+        email = ""
+    
+    # Create the hash
+    email_hash = hashlib.md5(email.lower().encode('utf-8')).hexdigest()
+    
+    # Build the URL
+    gravatar_url = f"https://www.gravatar.com/avatar/{email_hash}?s={size}&d={default}"
+    
+    return gravatar_url
+
+
 # Template context processor to avoid DetachedInstanceError
 @app.context_processor
 def inject_user():
@@ -425,7 +400,6 @@ def inject_user():
             user = db_session.query(User).filter_by(id=current_user.id).first()
             if user:
                 # Force load any lazy attributes we might need in templates
-                _ = user.is_admin  # This should load the attribute
                 _ = user.username  # This should load the attribute
                 # Store the session in Flask's g object for cleanup
                 g.template_db_session = db_session
@@ -461,6 +435,13 @@ def inject_branding():
             app_description="Mercury Bank data synchronization and management platform",
             logo_url=""
         )
+
+
+# Register template filters
+@app.template_filter('gravatar')
+def gravatar_filter(email, size=40):
+    """Template filter for generating Gravatar URLs."""
+    return get_gravatar_url(email, size)
 
 
 @app.teardown_appcontext
@@ -748,7 +729,7 @@ def admin_required(f):
         db_session = Session()
         try:
             user = db_session.query(User).get(current_user.id)
-            if not user or (not user.is_admin and not user.is_super_admin):
+            if not user or (not user.has_role('admin') and not user.has_role('super-admin')):
                 flash("Access denied. Admin privileges required.", "error")
                 return redirect(url_for("dashboard"))
         finally:
@@ -891,12 +872,48 @@ def register():
             db_session.add(new_user)
             db_session.flush()  # Flush to get the user ID
 
-            # Create user settings and set admin status for first user
-            from models.user_settings import UserSettings
+            # Assign roles to the new user
+            try:
+                from models.role import Role
+                
+                # All users get the basic "user" role
+                user_role = Role.get_or_create(db_session, "user", 
+                                             "Basic user with read access to their own data", 
+                                             is_system_role=True)
+                new_user.roles.append(user_role)
+                
+                # If this is the first user, also grant admin and super-admin roles
+                if is_first_user:
+                    admin_role = Role.get_or_create(db_session, "admin", 
+                                                  "Administrator with full system access", 
+                                                  is_system_role=True)
+                    super_admin_role = Role.get_or_create(db_session, "super-admin", 
+                                                        "Super administrator with all privileges including user management", 
+                                                        is_system_role=True)
+                    new_user.roles.append(admin_role)
+                    new_user.roles.append(super_admin_role)
+                
+            except Exception as role_error:
+                print(f"🚨 ERROR during role assignment: {role_error}")
+                import traceback
+                print(f"🚨 Full traceback: {traceback.format_exc()}")
+                # Continue with user creation but without roles
+                flash(f"User created but role assignment failed: {role_error}", "warning")
 
-            user_settings = UserSettings(user_id=new_user.id, is_admin=is_first_user)
-            db_session.add(user_settings)
-            db_session.commit()
+            # Create user settings
+            try:
+                from models.user_settings import UserSettings
+
+                user_settings = UserSettings(user_id=new_user.id)
+                db_session.add(user_settings)
+                db_session.commit()
+            except Exception as settings_error:
+                print(f"🚨 ERROR during user settings creation: {settings_error}")
+                import traceback
+                print(f"🚨 Full traceback: {traceback.format_exc()}")
+                db_session.rollback()
+                flash(f"User creation failed: {settings_error}", "error")
+                return render_template("register.html")
 
             if is_first_user:
                 flash(
@@ -1868,7 +1885,7 @@ def admin_settings():
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not user_in_session.is_admin:
+        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
@@ -1937,7 +1954,7 @@ def manage_mercury_access(mercury_account_id):
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not user_in_session.is_admin:
+        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
@@ -2086,15 +2103,15 @@ def admin_users():
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not user_in_session.is_admin:
+        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
         # Get all users
         all_users = db_session.query(User).all()
 
-        # Get admin users
-        admin_users = [user for user in all_users if user.is_admin]
+        # Get admin users (using role-based system)
+        admin_users = [user for user in all_users if user.has_role('admin') or user.has_role('super-admin')]
 
         # Get user deletion prevention setting
         prevent_user_deletion = SystemSetting.get_bool_value(
@@ -2132,7 +2149,7 @@ def add_user_form():
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not user_in_session.is_admin:
+        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
@@ -2167,7 +2184,7 @@ def add_user_submit():
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not user_in_session.is_admin:
+        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
@@ -2183,7 +2200,6 @@ def add_user_submit():
         email = request.form.get("email", "").strip()
         password = request.form.get("password", "")
         confirm_password = request.form.get("confirm_password", "")
-        is_admin = request.form.get("is_admin") == "true"
         selected_roles = request.form.getlist("roles")
 
         # Validate inputs
@@ -2227,8 +2243,8 @@ def add_user_submit():
             else:
                 logging.warning(f"Requested role '{role_name}' does not exist in the database. Possible typo or misconfiguration.")
 
-        # Create user settings (maintain backward compatibility)
-        user_settings = UserSettings(user_id=new_user.id, is_admin=is_admin)
+        # Create user settings
+        user_settings = UserSettings(user_id=new_user.id)
         db_session.add(user_settings)
         db_session.commit()
 
@@ -2240,116 +2256,6 @@ def add_user_submit():
         return redirect(url_for("add_user_form"))
     finally:
         db_session.close()
-
-
-@app.route("/admin/users/<int:user_id>/promote", methods=["POST"])
-@login_required
-@super_admin_required
-def promote_to_admin(user_id):
-    """Promote a user to admin status."""
-    db_session = Session()
-    try:
-        # Get current user in session to avoid DetachedInstanceError
-        user_in_session = get_current_user_in_session(db_session)
-        if not user_in_session:
-            flash("User session expired. Please log in again.", "error")
-            return redirect(url_for("login"))
-
-        # Get the user to promote
-        user = db_session.query(User).get(user_id)
-        if not user:
-            flash("User not found.", "error")
-            return redirect(url_for("admin_users"))
-
-        # Promote user to admin by adding the admin role
-        from models.role import Role
-        admin_role = db_session.query(Role).filter_by(name='admin').first()
-        if admin_role and not user.has_role('admin'):
-            user.add_role(admin_role, db_session)
-            
-            # Also ensure the user has transactions and reports roles
-            transactions_role = db_session.query(Role).filter_by(name='transactions').first()
-            reports_role = db_session.query(Role).filter_by(name='reports').first()
-            
-            if transactions_role and not user.has_role('transactions'):
-                user.add_role(transactions_role, db_session)
-                
-            if reports_role and not user.has_role('reports'):
-                user.add_role(reports_role, db_session)
-
-            # Update the legacy is_admin flag for backward compatibility
-            if not user.settings:
-                user_settings = UserSettings(user_id=user.id, is_admin=True)
-                db_session.add(user_settings)
-            else:
-                user.settings.is_admin = True
-
-            db_session.commit()
-            flash(f"User '{user.username}' has been promoted to admin!", "success")
-        else:
-            flash(f"User '{user.username}' is already an admin.", "info")
-    except Exception as e:
-        db_session.rollback()
-        flash(f"Error promoting user: {str(e)}", "error")
-
-    return redirect(url_for("admin_users"))
-
-
-@app.route("/admin/users/<int:user_id>/demote", methods=["POST"])
-@login_required
-@super_admin_required
-def demote_admin(user_id):
-    """Remove admin privileges from a user."""
-    db_session = Session()
-    try:
-        # Get current user in session to avoid DetachedInstanceError
-        user_in_session = get_current_user_in_session(db_session)
-        if not user_in_session:
-            flash("User session expired. Please log in again.", "error")
-            return redirect(url_for("login"))
-
-        # Get the user to demote
-        user = db_session.query(User).get(user_id)
-        if not user:
-            flash("User not found.", "error")
-            return redirect(url_for("admin_users"))
-
-        # Check if trying to demote self
-        if user.id == user_in_session.id:
-            flash("You cannot remove your own admin privileges.", "error")
-            return redirect(url_for("admin_users"))
-
-        # Don't allow demoting super admins if they're not the current user
-        if user.has_role('super-admin'):
-            flash("Cannot demote a super-admin user.", "error")
-            return redirect(url_for("admin_users"))
-
-        # Check if this is the last admin
-        from models.role import Role, user_role_association
-        admin_role = db_session.query(Role).filter_by(name='admin').first()
-        admin_count = db_session.query(user_role_association).filter_by(role_id=admin_role.id).count()
-        
-        if admin_count <= 1 and user.has_role('admin'):
-            flash("Cannot remove the last admin user.", "error")
-            return redirect(url_for("admin_users"))
-
-        # Remove admin role
-        if user.has_role('admin'):
-            user.remove_role('admin', db_session)
-            
-            # Update the legacy setting for backward compatibility
-            if user.settings:
-                user.settings.is_admin = False
-                
-            db_session.commit()
-            flash(f"Admin privileges removed from user '{user.username}'.", "success")
-        else:
-            flash(f"User '{user.username}' is not an admin.", "info")
-    except Exception as e:
-        db_session.rollback()
-        flash(f"Error demoting user: {str(e)}", "error")
-
-    return redirect(url_for("admin_users"))
 
 
 @app.route("/admin/users/<int:user_id>/lock", methods=["POST"])
@@ -2470,12 +2376,12 @@ def delete_user_by_id(user_id):
             return redirect(url_for("admin_users"))
 
         # Check if user is an admin
-        if user.is_admin:
+        from models.role import Role
+        if user.has_role('admin') or user.has_role('super-admin'):
             # Check if this is the last admin
             admin_count = (
                 db_session.query(User)
-                .join(UserSettings)
-                .filter(UserSettings.is_admin == True)
+                .filter(User.roles.any(Role.name.in_(["admin", "super-admin"])))
                 .count()
             )
             if admin_count <= 1:
@@ -2514,14 +2420,6 @@ def edit_user_roles(user_id):
             flash("Access denied. Super-admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
-        # Check if users are externally managed
-        users_externally_managed = SystemSetting.get_bool_value(
-            db_session, "users_externally_managed", default=False
-        )
-        if users_externally_managed:
-            flash("Role management is not allowed when users are externally managed.", "error")
-            return redirect(url_for("admin_users"))
-
         # Get the user to edit
         user = db_session.query(User).get(user_id)
         if not user:
@@ -2558,6 +2456,144 @@ def edit_user_roles(user_id):
     except Exception as e:
         db_session.rollback()
         flash(f"Error updating user roles: {str(e)}", "error")
+        return redirect(url_for("admin_users"))
+    finally:
+        db_session.close()
+
+
+@app.route("/admin/users/<int:user_id>/settings", methods=["GET", "POST"])
+@login_required
+@super_admin_required
+def edit_user_settings(user_id):
+    """Edit settings for a user - super-admin only."""
+    db_session = Session()
+    try:
+        # Get current user in session to avoid DetachedInstanceError
+        user_in_session = get_current_user_in_session(db_session)
+        if not user_in_session:
+            flash("User session expired. Please log in again.", "error")
+            return redirect(url_for("login"))
+
+        # Check if user is super-admin
+        if not user_in_session.is_super_admin:
+            flash("Access denied. Super-admin privileges required.", "error")
+            return redirect(url_for("dashboard"))
+
+        # Get the user to edit
+        user = db_session.query(User).get(user_id)
+        if not user:
+            flash("User not found.", "error")
+            return redirect(url_for("admin_users"))
+
+        # Get or create user settings
+        settings = (
+            db_session.query(UserSettings).filter_by(user_id=user.id).first()
+        )
+        if not settings:
+            settings = UserSettings(user_id=user.id)
+            db_session.add(settings)
+            db_session.commit()
+
+        # Get available Mercury accounts for this user
+        mercury_accounts = (
+            db_session.query(MercuryAccount)
+            .filter(MercuryAccount.users.contains(user))
+            .all()
+        )
+
+        # Get user's accessible accounts for primary account selection
+        accessible_accounts = get_user_accessible_accounts(user, db_session)
+
+        if request.method == "POST":
+            # Update primary Mercury account
+            primary_mercury_account_id = request.form.get("primary_mercury_account_id")
+            if primary_mercury_account_id == "":
+                settings.primary_mercury_account_id = None
+            else:
+                primary_mercury_account_id = int(primary_mercury_account_id)
+                # Verify user has access to this Mercury account
+                accessible_account_ids = [ma.id for ma in mercury_accounts]
+                if primary_mercury_account_id in accessible_account_ids:
+                    settings.primary_mercury_account_id = primary_mercury_account_id
+                else:
+                    flash(
+                        f"User '{user.username}' doesn't have access to the selected Mercury account.",
+                        "error",
+                    )
+                    return render_template(
+                        "edit_user_settings.html",
+                        settings=settings,
+                        target_user=user,
+                        mercury_accounts=mercury_accounts,
+                        accessible_accounts=accessible_accounts,
+                    )
+
+            # Update primary account
+            primary_account_id = request.form.get("primary_account_id")
+            if primary_account_id == "":
+                settings.primary_account_id = None
+            else:
+                # Verify user has access to this account
+                accessible_account_ids = [acc.id for acc in accessible_accounts]
+                if primary_account_id in accessible_account_ids:
+                    settings.primary_account_id = primary_account_id
+                else:
+                    flash(f"User '{user.username}' doesn't have access to the selected account.", "error")
+                    return render_template(
+                        "edit_user_settings.html",
+                        settings=settings,
+                        target_user=user,
+                        mercury_accounts=mercury_accounts,
+                        accessible_accounts=accessible_accounts,
+                    )
+
+            # Update other preferences
+            dashboard_prefs = {}
+            report_prefs = {}
+            transaction_prefs = {}
+
+            # Dashboard preferences
+            if request.form.get("dashboard_show_pending") == "on":
+                dashboard_prefs["show_pending"] = True
+            else:
+                dashboard_prefs["show_pending"] = False
+
+            # Report preferences
+            report_prefs["default_view"] = request.form.get(
+                "report_default_view", "charts"
+            )
+            report_prefs["default_period"] = request.form.get(
+                "report_default_period", "12"
+            )
+
+            # Transaction preferences
+            transaction_prefs["default_page_size"] = int(
+                request.form.get("transaction_page_size", "50")
+            )
+            transaction_prefs["default_status_filter"] = request.form.getlist(
+                "transaction_default_status"
+            )
+
+            # Update settings
+            settings.dashboard_preferences = dashboard_prefs
+            settings.report_preferences = report_prefs
+            settings.transaction_preferences = transaction_prefs
+
+            db_session.commit()
+            flash(f"Settings updated successfully for user '{user.username}'!", "success")
+            return redirect(url_for("admin_users"))
+
+        return render_template(
+            "edit_user_settings.html",
+            settings=settings,
+            target_user=user,
+            mercury_accounts=mercury_accounts,
+            accessible_accounts=accessible_accounts,
+        )
+
+    except Exception as e:
+        db_session.rollback()
+        flash(f"Error updating user settings: {str(e)}", "error")
         return redirect(url_for("admin_users"))
     finally:
         db_session.close()
@@ -2700,11 +2736,6 @@ def user_settings():
             report_prefs = {}
             transaction_prefs = {}
 
-            # Handle admin privileges (only admins can modify this)
-            if user_in_session.is_admin:
-                admin_checkbox = request.form.get("is_admin") == "on"
-                settings.is_admin = admin_checkbox
-
             # Dashboard preferences
             if request.form.get("dashboard_show_pending") == "on":
                 dashboard_prefs["show_pending"] = True
@@ -2782,19 +2813,31 @@ def edit_account(account_id):
         mercury_account = db_session.query(MercuryAccount).filter_by(id=account.mercury_account_id).first()
 
         if request.method == "POST":
-            # Update account fields (nickname is read-only from Mercury API)
-            account.receipt_required = request.form.get("receipt_required", "none")
+            # Handle current separate deposit receipt requirements
+            account.receipt_required_deposits = request.form.get("receipt_required_deposits", "none")
             
-            # Handle receipt threshold
-            threshold_str = request.form.get("receipt_threshold", "").strip()
-            if account.receipt_required == "threshold" and threshold_str:
+            threshold_deposits_str = request.form.get("receipt_threshold_deposits", "").strip()
+            if account.receipt_required_deposits == "threshold" and threshold_deposits_str:
                 try:
-                    account.receipt_threshold = float(threshold_str)
+                    account.receipt_threshold_deposits = float(threshold_deposits_str)
                 except ValueError:
-                    flash("Invalid receipt threshold amount.", "error")
+                    flash("Invalid deposit receipt threshold amount.", "error")
                     return render_template("edit_account.html", account=account, mercury_account=mercury_account)
             else:
-                account.receipt_threshold = None
+                account.receipt_threshold_deposits = None
+
+            # Handle current separate charge receipt requirements
+            account.receipt_required_charges = request.form.get("receipt_required_charges", "none")
+            
+            threshold_charges_str = request.form.get("receipt_threshold_charges", "").strip()
+            if account.receipt_required_charges == "threshold" and threshold_charges_str:
+                try:
+                    account.receipt_threshold_charges = float(threshold_charges_str)
+                except ValueError:
+                    flash("Invalid charge receipt threshold amount.", "error")
+                    return render_template("edit_account.html", account=account, mercury_account=mercury_account)
+            else:
+                account.receipt_threshold_charges = None
 
             # Handle exclude from reports setting
             account.exclude_from_reports = 'exclude_from_reports' in request.form
