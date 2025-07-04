@@ -167,12 +167,12 @@ jobs:
     - name: Verify user roles in database
       run: |
         # Check user roles in database (simplified check)
-        docker exec $(docker-compose -f docker-compose-test.yml ps -q mysql) mysql -u mercury_user -pmercury_password mercury_bank \
+        docker exec $(docker compose -f docker-compose-test.yml ps -q mysql) mysql -u mercury_user -pmercury_password mercury_bank \
           -e "SELECT COUNT(*) as user_count FROM users;" || echo "Database check completed"
 
     - name: Stop services
       run: |
-        docker-compose -f docker-compose-test.yml down -v
+        docker compose -f docker-compose-test.yml down -v
 
   security-scan:
     runs-on: ubuntu-latest
