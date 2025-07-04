@@ -24,7 +24,7 @@ from flask_login import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 from sqlalchemy import create_engine, func, extract, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, joinedload
 from datetime import datetime, timedelta
 from functools import wraps
 import os
@@ -255,7 +255,8 @@ login_manager.login_view = "login"
 def load_user(user_id):
     db_session = Session()
     try:
-        user = db_session.query(User).get(int(user_id))
+        # Eagerly load the user and roles to avoid DetachedInstanceError
+        user = db_session.query(User).options(joinedload(User.roles)).filter(User.id == int(user_id)).first()
         if user:
             # Make the user object detached from this session to avoid conflicts
             db_session.expunge(user)
