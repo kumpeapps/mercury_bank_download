@@ -348,6 +348,43 @@ LEFT JOIN accounts a ON ma.id = a.mercury_account_id
 GROUP BY ma.id;"
 ```
 
+### Database Migrations with Alembic
+
+This project uses [Alembic](https://alembic.sqlalchemy.org/) for database schema migrations. Alembic provides database-agnostic migration support for any database supported by SQLAlchemy.
+
+#### Quick Migration Commands
+
+```bash
+# Check current migration status
+python migrate.py status
+
+# Apply all pending migrations
+python migrate.py upgrade
+
+# Create a new migration for model changes
+python migrate.py autogenerate -m "Add new feature"
+
+# Test database connection
+python migrate.py test-connection
+```
+
+#### Docker Environment Migrations
+
+In Docker environments, migrations run automatically during container startup. For manual migration management:
+
+```bash
+# Run migrations in web container
+docker-compose exec web-app python migrate.py upgrade
+
+# Check migration status
+docker-compose exec web-app python migrate.py status
+
+# Create new migration
+docker-compose exec web-app python migrate.py autogenerate -m "Description"
+```
+
+For detailed migration documentation, see [docs/ALEMBIC_MIGRATION_GUIDE.md](docs/ALEMBIC_MIGRATION_GUIDE.md).
+
 ### Applying Changes Properly
 
 When making changes to the application, it's crucial to follow the correct procedure to ensure all components are properly rebuilt and synchronized:

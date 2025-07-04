@@ -2,6 +2,7 @@
 sqlalchemy>=1.4.0
 pymysql
 cryptography
+alembic>=1.12.0
 
 # Security and authentication
 bcrypt>=4.0.0

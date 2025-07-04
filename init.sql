@@ -2,7 +2,7 @@
 -- This script will be executed when the MySQL container starts for the first time
 
 -- Ensure we're using the correct database
-USE mercury_db;
+USE mercury_bank;
 
 -- Set timezone
 SET time_zone = '+00:00';

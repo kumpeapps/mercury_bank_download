@@ -9,6 +9,11 @@ services:
     build: ./sync_app
     image: mercury-sync:dev
     # Override the image to use local build instead of registry
+    volumes:
+      # Mount migration files from project root
+      - ./migrate.py:/app/migrate.py
+      - ./alembic.ini:/app/alembic.ini
+      - ./alembic:/app/alembic
     
   web-app:
     build: ./web_app  
@@ -24,6 +29,10 @@ services:
       # Add volume mount for development (hot reload)
       - ./web_app:/app
       - ./web_app/logs:/app/logs
+      # Mount migration files from project root
+      - ./migrate.py:/app/migrate.py
+      - ./alembic.ini:/app/alembic.ini
+      - ./alembic:/app/alembic
       # Exclude these directories from the mount to avoid conflicts
       - /app/__pycache__
       - /app/models/__pycache__

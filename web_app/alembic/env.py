@@ -1,36 +1,28 @@
-from logging.config import fileConfig
 import os
 import sys
+from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
 
-# Add the parent directory to the path so we can import our models
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+# Add the project root to the Python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import our models and ensure all are loaded
+# Import our models - use local models directory
 from models.base import Base
 from models.user import User
-from models.role import Role
-from models.user_settings import UserSettings
-from models.mercury_account import MercuryAccount
 from models.account import Account
+from models.mercury_account import MercuryAccount
 from models.transaction import Transaction
 from models.transaction_attachment import TransactionAttachment
+from models.user_settings import UserSettings
 from models.system_setting import SystemSetting
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-
-# Set the sqlalchemy.url from environment variable
-database_url = os.environ.get(
-    "DATABASE_URL", 
-    "mysql+pymysql://mercury_user:mercury_password@mysql:3306/mercury_bank"
-)
-config.set_main_option("sqlalchemy.url", database_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -47,6 +39,27 @@ target_metadata = Base.metadata
 # ... etc.
 
 
+def get_database_url():
+    """Get database URL from environment variables."""
+    # Load environment variables
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    # First try to get the complete DATABASE_URL (preferred)
+    database_url = os.getenv('DATABASE_URL')
+    if database_url:
+        return database_url
+    
+    # Fallback: build URL from individual components for backward compatibility
+    db_host = os.getenv('MYSQL_HOST', 'localhost')
+    db_port = os.getenv('MYSQL_PORT', '3306')
+    db_user = os.getenv('MYSQL_USER', 'mercury_user')
+    db_password = os.getenv('MYSQL_PASSWORD', 'mercury_password')
+    db_name = os.getenv('MYSQL_DATABASE', 'mercury_bank')
+    
+    return f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
 
@@ -59,7 +72,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    url = get_database_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -78,8 +91,12 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    # Override the sqlalchemy.url with our dynamic URL
+    configuration = config.get_section(config.config_ini_section) or {}
+    configuration['sqlalchemy.url'] = get_database_url()
+    
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
