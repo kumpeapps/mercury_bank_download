@@ -10,6 +10,16 @@ The CLI GUI provides a text-based interface for managing the Mercury Bank sync s
 - Development and debugging
 - Backup administration interface
 
+## Access Control
+
+**No Authentication Required**: The CLI GUI assumes that if you have access to run it, you have administrative privileges. This is because:
+
+- CLI access requires database connection credentials (`DATABASE_URL`)
+- Access to the file system where the application is installed
+- Typically used in trusted environments (servers, development machines)
+
+The CLI GUI automatically determines admin user context for logging and informational purposes, but does not restrict functionality based on user roles.
+
 ## Features
 
 ### 🖥️ **System Status**

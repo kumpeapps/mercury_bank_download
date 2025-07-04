@@ -73,8 +73,16 @@ def ensure_super_admin():
         
         print(f"Promoting user '{super_admin_username}' to super-admin...")
         
-        # Add super-admin role
-        user.add_role(super_admin_role, session)
+        # Add super-admin role if not already present
+        if super_admin_role not in user.roles:
+            user.roles.append(super_admin_role)
+        
+        # Also add admin role for extra access
+        admin_role = Role.get_or_create(session, "admin", 
+                                       "Can manage Mercury accounts and account settings", 
+                                       is_system_role=True)
+        if admin_role not in user.roles:
+            user.roles.append(admin_role)
         
         # Ensure user has admin flag set (for backward compatibility)
         if not user.settings:

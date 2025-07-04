@@ -34,176 +34,225 @@ from utils.encryption import encrypt_api_key, decrypt_api_key
 
 class CLIColors:
     """ANSI color codes for terminal output."""
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
+
+    HEADER = "\033[95m"
+    OKBLUE = "\033[94m"
+    OKCYAN = "\033[96m"
+    OKGREEN = "\033[92m"
+    WARNING = "\033[93m"
+    FAIL = "\033[91m"
+    ENDC = "\033[0m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
 
 
 class MercurySyncCLI:
     """Command-line interface for Mercury Bank sync service."""
-    
+
     def __init__(self):
         self.session = None
         self.engine = None
         self.current_user = None
         self.running = True
-        
+
         # Handle Ctrl+C gracefully
         signal.signal(signal.SIGINT, self._signal_handler)
-        
+
     def _signal_handler(self, signum, frame):
         """Handle interrupt signals."""
         print(f"\n{CLIColors.WARNING}Exiting...{CLIColors.ENDC}")
         self.running = False
         sys.exit(0)
-        
+
     def _print_header(self, title: str):
         """Print a formatted header."""
         print(f"\n{CLIColors.HEADER}{CLIColors.BOLD}{'='*60}{CLIColors.ENDC}")
         print(f"{CLIColors.HEADER}{CLIColors.BOLD}{title.center(60)}{CLIColors.ENDC}")
         print(f"{CLIColors.HEADER}{CLIColors.BOLD}{'='*60}{CLIColors.ENDC}")
-        
+
     def _print_success(self, message: str):
         """Print a success message."""
         print(f"{CLIColors.OKGREEN}✓ {message}{CLIColors.ENDC}")
-        
+
     def _print_error(self, message: str):
         """Print an error message."""
         print(f"{CLIColors.FAIL}✗ {message}{CLIColors.ENDC}")
-        
+
     def _print_warning(self, message: str):
         """Print a warning message."""
         print(f"{CLIColors.WARNING}⚠ {message}{CLIColors.ENDC}")
-        
+
     def _print_info(self, message: str):
         """Print an info message."""
         print(f"{CLIColors.OKBLUE}ℹ {message}{CLIColors.ENDC}")
-        
+
     def _get_input(self, prompt: str) -> str:
         """Get user input with colored prompt."""
         return input(f"{CLIColors.OKCYAN}{prompt}{CLIColors.ENDC}")
-        
+
     def _get_password(self, prompt: str) -> str:
         """Get password input with colored prompt."""
         return getpass.getpass(f"{CLIColors.OKCYAN}{prompt}{CLIColors.ENDC}")
-        
+
     def _pause(self):
         """Pause and wait for user input."""
         input(f"\n{CLIColors.OKBLUE}Press Enter to continue...{CLIColors.ENDC}")
-        
+
     def _connect_database(self) -> bool:
         """Connect to the database."""
-        database_url = os.environ.get('DATABASE_URL')
+        database_url = os.environ.get("DATABASE_URL")
         if not database_url:
             self._print_error("DATABASE_URL environment variable is not set")
             return False
-            
+
         try:
             self.engine = create_engine(database_url)
             Session = sessionmaker(bind=self.engine)
             self.session = Session()
-            
+
             # Test connection
             self.session.execute(text("SELECT 1"))
             self._print_success("Connected to database successfully")
             return True
-            
+
         except SQLAlchemyError as e:
             self._print_error(f"Database connection failed: {str(e)}")
             return False
-            
-    def _authenticate_user(self) -> bool:
-        """Authenticate user for administrative tasks."""
+
+    def _get_admin_user_context(self) -> Optional[User]:
+        """Get an admin user context for operations (no authentication required)."""
         if not self.session:
-            return False
-            
-        while True:
-            print(f"\n{CLIColors.OKBLUE}Authentication Required{CLIColors.ENDC}")
-            username = self._get_input("Username: ")
-            if not username:
-                return False
-                
-            password = self._get_password("Password: ")
-            if not password:
-                return False
-                
-            try:
-                user = self.session.query(User).filter_by(username=username).first()
-                if user and user.check_password(password):
-                    if user.has_role('admin') or user.has_role('super-admin'):
-                        self.current_user = user
-                        self._print_success(f"Authenticated as {username}")
-                        return True
-                    else:
-                        self._print_error("Admin privileges required")
-                        return False
-                else:
-                    self._print_error("Invalid username or password")
-                    retry = self._get_input("Try again? (y/n): ").lower()
-                    if retry != 'y':
-                        return False
-                        
-            except SQLAlchemyError as e:
-                self._print_error(f"Authentication error: {str(e)}")
-                return False
-                
+            return None
+
+        try:
+            # First try to get super admin from environment variable
+            super_admin_username = os.environ.get("SUPER_ADMIN_USERNAME")
+            if super_admin_username:
+                from sqlalchemy.orm import joinedload
+
+                user = (
+                    self.session.query(User)
+                    .options(joinedload(User.roles))
+                    .filter_by(username=super_admin_username)
+                    .first()
+                )
+                if user:
+                    self._print_info(
+                        f"Operating as super admin: {super_admin_username}"
+                    )
+                    return user
+
+            # Otherwise, find any admin user
+            from sqlalchemy.orm import joinedload
+
+            admin_role = self.session.query(Role).filter_by(name="admin").first()
+            super_admin_role = (
+                self.session.query(Role).filter_by(name="super-admin").first()
+            )
+
+            admin_user = None
+            if super_admin_role:
+                admin_user = (
+                    self.session.query(User)
+                    .options(joinedload(User.roles))
+                    .filter(User.roles.contains(super_admin_role))
+                    .first()
+                )
+
+            if not admin_user and admin_role:
+                admin_user = (
+                    self.session.query(User)
+                    .options(joinedload(User.roles))
+                    .filter(User.roles.contains(admin_role))
+                    .first()
+                )
+
+            # Fallback to legacy admin
+            if not admin_user:
+                admin_user = (
+                    self.session.query(User)
+                    .join(UserSettings)
+                    .filter(UserSettings.is_admin == True)
+                    .first()
+                )
+
+            if admin_user:
+                self._print_info(f"Operating as admin user: {admin_user.username}")
+                return admin_user
+            else:
+                self._print_warning(
+                    "No admin users found - operating with direct database access"
+                )
+                return None
+
+        except Exception as e:
+            self._print_warning(
+                f"Error getting admin context: {str(e)} - operating with direct database access"
+            )
+            return None
+
     def _show_system_status(self):
         """Display system status information."""
         self._print_header("System Status")
-        
+
         try:
             # Database info
             print(f"{CLIColors.BOLD}Database:{CLIColors.ENDC}")
-            database_url = os.environ.get('DATABASE_URL', 'Not configured')
-            if 'password' in database_url.lower():
+            database_url = os.environ.get("DATABASE_URL", "Not configured")
+            if "password" in database_url.lower():
                 # Mask password in URL
-                parts = database_url.split('@')
+                parts = database_url.split("@")
                 if len(parts) > 1:
-                    masked_url = parts[0].split(':')[:-1] + ['****@'] + parts[1:]
-                    database_url = ':'.join(masked_url)
+                    masked_url = parts[0].split(":")[:-1] + ["****@"] + parts[1:]
+                    database_url = ":".join(masked_url)
             print(f"  URL: {database_url}")
-            
+
             # User count
             user_count = self.session.query(User).count()
             print(f"  Users: {user_count}")
-            
+
             # Mercury accounts
             mercury_account_count = self.session.query(MercuryAccount).count()
-            active_mercury_accounts = self.session.query(MercuryAccount).filter_by(is_active=True).count()
-            print(f"  Mercury Accounts: {active_mercury_accounts}/{mercury_account_count} active")
-            
+            active_mercury_accounts = (
+                self.session.query(MercuryAccount).filter_by(is_active=True).count()
+            )
+            print(
+                f"  Mercury Accounts: {active_mercury_accounts}/{mercury_account_count} active"
+            )
+
             # Bank accounts
             account_count = self.session.query(Account).count()
             print(f"  Bank Accounts: {account_count}")
-            
+
             # Transactions
             transaction_count = self.session.query(Transaction).count()
-            recent_transactions = self.session.query(Transaction).filter(
-                Transaction.posted_at >= datetime.now() - timedelta(days=7)
-            ).count()
-            print(f"  Transactions: {transaction_count} total, {recent_transactions} in last 7 days")
-            
+            recent_transactions = (
+                self.session.query(Transaction)
+                .filter(Transaction.posted_at >= datetime.now() - timedelta(days=7))
+                .count()
+            )
+            print(
+                f"  Transactions: {transaction_count} total, {recent_transactions} in last 7 days"
+            )
+
             # Environment variables
             print(f"\n{CLIColors.BOLD}Environment:{CLIColors.ENDC}")
-            print(f"  API URL: {os.environ.get('MERCURY_API_URL', 'https://api.mercury.com')}")
+            print(
+                f"  API URL: {os.environ.get('MERCURY_API_URL', 'https://api.mercury.com')}"
+            )
             print(f"  Sandbox Mode: {os.environ.get('MERCURY_SANDBOX_MODE', 'false')}")
-            print(f"  Sync Interval: {os.environ.get('SYNC_INTERVAL_MINUTES', '60')} minutes")
+            print(
+                f"  Sync Interval: {os.environ.get('SYNC_INTERVAL_MINUTES', '60')} minutes"
+            )
             print(f"  Sync Days Back: {os.environ.get('SYNC_DAYS_BACK', '30')} days")
-            
+
         except Exception as e:
             self._print_error(f"Error retrieving system status: {str(e)}")
-            
+
     def _manage_mercury_accounts(self):
         """Manage Mercury accounts."""
-        if not self._authenticate_user():
-            return
-            
+        admin_context = self._get_admin_user_context()
+
         while True:
             self._print_header("Mercury Account Management")
             print("1. List Mercury accounts")
@@ -212,69 +261,77 @@ class MercurySyncCLI:
             print("4. Enable/Disable account")
             print("5. Test API connection")
             print("6. Back to main menu")
-            
+
             choice = self._get_input("\nSelect option (1-6): ")
-            
-            if choice == '1':
+
+            if choice == "1":
                 self._list_mercury_accounts()
-            elif choice == '2':
+            elif choice == "2":
                 self._add_mercury_account()
-            elif choice == '3':
+            elif choice == "3":
                 self._edit_mercury_account()
-            elif choice == '4':
+            elif choice == "4":
                 self._toggle_mercury_account()
-            elif choice == '5':
+            elif choice == "5":
                 self._test_api_connection()
-            elif choice == '6':
+            elif choice == "6":
                 break
             else:
                 self._print_error("Invalid choice")
-                
-            if choice != '6':
+
+            if choice != "6":
                 self._pause()
-                
+
     def _list_mercury_accounts(self):
         """List all Mercury accounts."""
         try:
             accounts = self.session.query(MercuryAccount).all()
-            
+
             if not accounts:
                 self._print_info("No Mercury accounts configured")
                 return
-                
+
             print(f"\n{CLIColors.BOLD}Mercury Accounts:{CLIColors.ENDC}")
-            print(f"{'ID':<4} {'Name':<25} {'Status':<10} {'Sandbox':<8} {'Users':<6} {'Last Sync'}")
+            print(
+                f"{'ID':<4} {'Name':<25} {'Status':<10} {'Sandbox':<8} {'Users':<6} {'Last Sync'}"
+            )
             print("-" * 80)
-            
+
             for account in accounts:
                 status = "Active" if account.is_active else "Inactive"
                 sandbox = "Yes" if account.sandbox_mode else "No"
                 user_count = len(account.users)
-                last_sync = account.last_sync_at.strftime("%Y-%m-%d %H:%M") if account.last_sync_at else "Never"
-                
-                print(f"{account.id:<4} {account.name[:24]:<25} {status:<10} {sandbox:<8} {user_count:<6} {last_sync}")
-                
+                last_sync = (
+                    account.last_sync_at.strftime("%Y-%m-%d %H:%M")
+                    if account.last_sync_at
+                    else "Never"
+                )
+
+                print(
+                    f"{account.id:<4} {account.name[:24]:<25} {status:<10} {sandbox:<8} {user_count:<6} {last_sync}"
+                )
+
         except Exception as e:
             self._print_error(f"Error listing Mercury accounts: {str(e)}")
-            
+
     def _add_mercury_account(self):
         """Add a new Mercury account."""
         print(f"\n{CLIColors.BOLD}Add Mercury Account{CLIColors.ENDC}")
-        
+
         try:
             name = self._get_input("Account name: ")
             if not name:
                 self._print_error("Account name is required")
                 return
-                
+
             api_key = self._get_password("API key: ")
             if not api_key:
                 self._print_error("API key is required")
                 return
-                
-            sandbox = self._get_input("Sandbox mode? (y/n): ").lower() == 'y'
+
+            sandbox = self._get_input("Sandbox mode? (y/n): ").lower() == "y"
             description = self._get_input("Description (optional): ")
-            
+
             # Create new Mercury account
             mercury_account = MercuryAccount(
                 name=name,
@@ -282,123 +339,146 @@ class MercurySyncCLI:
                 sandbox_mode=sandbox,
                 description=description if description else None,
                 is_active=True,
-                sync_enabled=True
+                sync_enabled=True,
             )
-            
+
             self.session.add(mercury_account)
             self.session.commit()
-            
+
             self._print_success(f"Mercury account '{name}' added successfully")
-            
+
         except Exception as e:
             self.session.rollback()
             self._print_error(f"Error adding Mercury account: {str(e)}")
-            
+
     def _edit_mercury_account(self):
         """Edit an existing Mercury account."""
         self._list_mercury_accounts()
-        
+
         try:
             account_id = int(self._get_input("\nEnter account ID to edit: "))
-            account = self.session.query(MercuryAccount).get(account_id)
-            
+            account = (
+                self.session.query(MercuryAccount)
+                .filter(MercuryAccount.id == account_id)
+                .first()
+            )
+
             if not account:
                 self._print_error("Account not found")
                 return
-                
+
             print(f"\n{CLIColors.BOLD}Editing: {account.name}{CLIColors.ENDC}")
             print(f"Current name: {account.name}")
             print(f"Current sandbox mode: {'Yes' if account.sandbox_mode else 'No'}")
             print(f"Current status: {'Active' if account.is_active else 'Inactive'}")
-            
+
             # Update fields
             new_name = self._get_input(f"New name (current: {account.name}): ")
             if new_name:
                 account.name = new_name
-                
-            new_api_key = self._get_password("New API key (leave empty to keep current): ")
+
+            new_api_key = self._get_password(
+                "New API key (leave empty to keep current): "
+            )
             if new_api_key:
                 account.api_key = new_api_key
-                
-            sandbox_input = self._get_input(f"Sandbox mode (y/n, current: {'y' if account.sandbox_mode else 'n'}): ")
-            if sandbox_input.lower() in ['y', 'n']:
-                account.sandbox_mode = sandbox_input.lower() == 'y'
-                
-            new_description = self._get_input(f"Description (current: {account.description or 'None'}): ")
+
+            sandbox_input = self._get_input(
+                f"Sandbox mode (y/n, current: {'y' if account.sandbox_mode else 'n'}): "
+            )
+            if sandbox_input.lower() in ["y", "n"]:
+                account.sandbox_mode = sandbox_input.lower() == "y"
+
+            new_description = self._get_input(
+                f"Description (current: {account.description or 'None'}): "
+            )
             if new_description:
                 account.description = new_description
-                
+
             self.session.commit()
             self._print_success("Mercury account updated successfully")
-            
+
         except ValueError:
             self._print_error("Invalid account ID")
         except Exception as e:
             self.session.rollback()
             self._print_error(f"Error editing Mercury account: {str(e)}")
-            
+
     def _toggle_mercury_account(self):
         """Enable or disable a Mercury account."""
         self._list_mercury_accounts()
-        
+
         try:
             account_id = int(self._get_input("\nEnter account ID to toggle: "))
-            account = self.session.query(MercuryAccount).get(account_id)
-            
+            account = (
+                self.session.query(MercuryAccount)
+                .filter(MercuryAccount.id == account_id)
+                .first()
+            )
+
             if not account:
                 self._print_error("Account not found")
                 return
-                
+
             old_status = "Active" if account.is_active else "Inactive"
             account.is_active = not account.is_active
             new_status = "Active" if account.is_active else "Inactive"
-            
+
             self.session.commit()
-            self._print_success(f"Account '{account.name}' changed from {old_status} to {new_status}")
-            
+            self._print_success(
+                f"Account '{account.name}' changed from {old_status} to {new_status}"
+            )
+
         except ValueError:
             self._print_error("Invalid account ID")
         except Exception as e:
             self.session.rollback()
             self._print_error(f"Error toggling Mercury account: {str(e)}")
-            
+
     def _test_api_connection(self):
         """Test API connection for a Mercury account."""
         self._list_mercury_accounts()
-        
+
         try:
             account_id = int(self._get_input("\nEnter account ID to test: "))
-            account = self.session.query(MercuryAccount).get(account_id)
-            
+            account = (
+                self.session.query(MercuryAccount)
+                .filter(MercuryAccount.id == account_id)
+                .first()
+            )
+
             if not account:
                 self._print_error("Account not found")
                 return
-                
-            print(f"\n{CLIColors.BOLD}Testing API connection for: {account.name}{CLIColors.ENDC}")
-            
+
+            print(
+                f"\n{CLIColors.BOLD}Testing API connection for: {account.name}{CLIColors.ENDC}"
+            )
+
             # This would normally test the actual API connection
             # For now, just check if we can decrypt the API key
             try:
                 api_key = account.get_decrypted_api_key()
                 if api_key:
                     self._print_success("API key is properly encrypted and accessible")
-                    self._print_info("Note: Full API connectivity test requires sync service")
+                    self._print_info(
+                        "Note: Full API connectivity test requires sync service"
+                    )
                 else:
                     self._print_error("Failed to decrypt API key")
-                    
+
             except Exception as e:
                 self._print_error(f"API key test failed: {str(e)}")
-                
+
         except ValueError:
             self._print_error("Invalid account ID")
         except Exception as e:
             self._print_error(f"Error testing API connection: {str(e)}")
-            
+
     def _manage_users(self):
         """Manage users and roles."""
-        if not self._authenticate_user():
-            return
-            
+        admin_context = self._get_admin_user_context()
+
         while True:
             self._print_header("User Management")
             print("1. List users")
@@ -407,145 +487,165 @@ class MercurySyncCLI:
             print("4. Reset user password")
             print("5. Lock/Unlock user")
             print("6. Back to main menu")
-            
+
             choice = self._get_input("\nSelect option (1-6): ")
-            
-            if choice == '1':
+
+            if choice == "1":
                 self._list_users()
-            elif choice == '2':
+            elif choice == "2":
                 self._add_user()
-            elif choice == '3':
+            elif choice == "3":
                 self._manage_user_roles()
-            elif choice == '4':
+            elif choice == "4":
                 self._reset_user_password()
-            elif choice == '5':
+            elif choice == "5":
                 self._toggle_user_lock()
-            elif choice == '6':
+            elif choice == "6":
                 break
             else:
                 self._print_error("Invalid choice")
-                
-            if choice != '6':
+
+            if choice != "6":
                 self._pause()
-                
+
     def _list_users(self):
         """List all users with their roles."""
         try:
-            users = self.session.query(User).all()
-            
+            # Eagerly load users with their roles to avoid DetachedInstanceError
+            from sqlalchemy.orm import joinedload
+
+            users = self.session.query(User).options(joinedload(User.roles)).all()
+
             if not users:
                 self._print_info("No users found")
                 return
-                
+
             print(f"\n{CLIColors.BOLD}Users:{CLIColors.ENDC}")
             print(f"{'ID':<4} {'Username':<20} {'Email':<30} {'Roles'}")
             print("-" * 80)
-            
+
             for user in users:
                 roles = [role.name for role in user.roles]
                 roles_str = ", ".join(roles) if roles else "None"
-                
-                print(f"{user.id:<4} {user.username[:19]:<20} {user.email[:29]:<30} {roles_str}")
-                
+
+                print(
+                    f"{user.id:<4} {user.username[:19]:<20} {user.email[:29]:<30} {roles_str}"
+                )
+
         except Exception as e:
             self._print_error(f"Error listing users: {str(e)}")
-            
+
     def _add_user(self):
         """Add a new user."""
         print(f"\n{CLIColors.BOLD}Add User{CLIColors.ENDC}")
-        
+
         try:
             username = self._get_input("Username: ")
             if not username:
                 self._print_error("Username is required")
                 return
-                
+
             # Check if username exists
-            existing_user = self.session.query(User).filter_by(username=username).first()
+            existing_user = (
+                self.session.query(User).filter_by(username=username).first()
+            )
             if existing_user:
                 self._print_error("Username already exists")
                 return
-                
+
             email = self._get_input("Email: ")
             if not email:
                 self._print_error("Email is required")
                 return
-                
+
             password = self._get_password("Password: ")
             if not password:
                 self._print_error("Password is required")
                 return
-                
+
             confirm_password = self._get_password("Confirm password: ")
             if password != confirm_password:
                 self._print_error("Passwords do not match")
                 return
-                
+
             first_name = self._get_input("First name (optional): ")
             last_name = self._get_input("Last name (optional): ")
-            
+
             # Create user
             new_user = User(
                 username=username,
                 email=email,
                 first_name=first_name if first_name else None,
                 last_name=last_name if last_name else None,
-                is_active=True
+                is_active=True,
             )
             new_user.set_password(password)
-            
+
             self.session.add(new_user)
             self.session.flush()  # Get user ID
-            
+
             # Add basic user role
-            user_role = self.session.query(Role).filter_by(name='user').first()
+            user_role = self.session.query(Role).filter_by(name="user").first()
             if user_role:
                 new_user.roles.append(user_role)
-                
+
             # Create user settings
             user_settings = UserSettings(user_id=new_user.id, is_admin=False)
             self.session.add(user_settings)
-            
+
             self.session.commit()
             self._print_success(f"User '{username}' created successfully")
-            
+
         except Exception as e:
             self.session.rollback()
             self._print_error(f"Error creating user: {str(e)}")
-            
+
     def _manage_user_roles(self):
         """Manage roles for a specific user."""
         self._list_users()
-        
+
         try:
             user_id = int(self._get_input("\nEnter user ID to manage: "))
-            user = self.session.query(User).get(user_id)
-            
+
+            # Eagerly load user with roles to avoid DetachedInstanceError
+            from sqlalchemy.orm import joinedload
+
+            user = (
+                self.session.query(User)
+                .options(joinedload(User.roles))
+                .filter(User.id == user_id)
+                .first()
+            )
+
             if not user:
                 self._print_error("User not found")
                 return
-                
-            print(f"\n{CLIColors.BOLD}Managing roles for: {user.username}{CLIColors.ENDC}")
-            
+
+            print(
+                f"\n{CLIColors.BOLD}Managing roles for: {user.username}{CLIColors.ENDC}"
+            )
+
             # Show current roles
             current_roles = [role.name for role in user.roles]
-            print(f"Current roles: {', '.join(current_roles) if current_roles else 'None'}")
-            
+            print(
+                f"Current roles: {', '.join(current_roles) if current_roles else 'None'}"
+            )
+
             # Show available roles
             all_roles = self.session.query(Role).all()
             print(f"\nAvailable roles:")
             for i, role in enumerate(all_roles, 1):
                 status = "✓" if role.name in current_roles else " "
                 print(f"  {i}. [{status}] {role.name} - {role.description}")
-                
+
             print(f"\nActions:")
             print(f"  a. Add role")
             print(f"  r. Remove role")
             print(f"  q. Quit")
-            
+
             action = self._get_input("Select action: ").lower()
-            
-            if action == 'a':
+
+            if action == "a":
                 role_name = self._get_input("Enter role name to add: ")
                 role = self.session.query(Role).filter_by(name=role_name).first()
                 if role and role not in user.roles:
@@ -554,98 +654,111 @@ class MercurySyncCLI:
                     self._print_success(f"Role '{role_name}' added to {user.username}")
                 else:
                     self._print_error("Role not found or already assigned")
-                    
-            elif action == 'r':
+
+            elif action == "r":
                 role_name = self._get_input("Enter role name to remove: ")
                 role = self.session.query(Role).filter_by(name=role_name).first()
                 if role and role in user.roles:
                     user.roles.remove(role)
                     self.session.commit()
-                    self._print_success(f"Role '{role_name}' removed from {user.username}")
+                    self._print_success(
+                        f"Role '{role_name}' removed from {user.username}"
+                    )
                 else:
                     self._print_error("Role not found or not assigned")
-                    
+
         except ValueError:
             self._print_error("Invalid user ID")
         except Exception as e:
             self.session.rollback()
             self._print_error(f"Error managing user roles: {str(e)}")
-            
+
     def _reset_user_password(self):
         """Reset a user's password."""
         self._list_users()
-        
+
         try:
             user_id = int(self._get_input("\nEnter user ID for password reset: "))
-            user = self.session.query(User).get(user_id)
-            
+            user = self.session.query(User).filter(User.id == user_id).first()
+
             if not user:
                 self._print_error("User not found")
                 return
-                
-            print(f"\n{CLIColors.BOLD}Reset password for: {user.username}{CLIColors.ENDC}")
-            
+
+            print(
+                f"\n{CLIColors.BOLD}Reset password for: {user.username}{CLIColors.ENDC}"
+            )
+
             new_password = self._get_password("New password: ")
             if not new_password:
                 self._print_error("Password cannot be empty")
                 return
-                
+
             confirm_password = self._get_password("Confirm password: ")
             if new_password != confirm_password:
                 self._print_error("Passwords do not match")
                 return
-                
+
             user.set_password(new_password)
             self.session.commit()
-            
+
             self._print_success(f"Password reset for user '{user.username}'")
-            
+
         except ValueError:
             self._print_error("Invalid user ID")
         except Exception as e:
             self.session.rollback()
             self._print_error(f"Error resetting password: {str(e)}")
-            
+
     def _toggle_user_lock(self):
         """Lock or unlock a user account."""
         self._list_users()
-        
+
         try:
             user_id = int(self._get_input("\nEnter user ID to lock/unlock: "))
-            user = self.session.query(User).get(user_id)
-            
+
+            # Eagerly load user with roles to avoid DetachedInstanceError
+            from sqlalchemy.orm import joinedload
+
+            user = (
+                self.session.query(User)
+                .options(joinedload(User.roles))
+                .filter(User.id == user_id)
+                .first()
+            )
+
             if not user:
                 self._print_error("User not found")
                 return
-                
+
             # Check if user has locked role
-            locked_role = self.session.query(Role).filter_by(name='locked').first()
+            locked_role = self.session.query(Role).filter_by(name="locked").first()
             if not locked_role:
                 self._print_error("Locked role not found in system")
                 return
-                
+
             is_locked = locked_role in user.roles
-            
+
             if is_locked:
                 user.roles.remove(locked_role)
                 action = "unlocked"
             else:
                 user.roles.append(locked_role)
                 action = "locked"
-                
+
             self.session.commit()
             self._print_success(f"User '{user.username}' has been {action}")
-            
+
         except ValueError:
             self._print_error("Invalid user ID")
         except Exception as e:
             self.session.rollback()
             self._print_error(f"Error toggling user lock: {str(e)}")
-            
+
     def _view_sync_logs(self):
         """View recent sync activity and logs."""
         self._print_header("Sync Activity")
-        
+
         try:
             # Show recent transactions
             recent_transactions = (
@@ -654,45 +767,61 @@ class MercurySyncCLI:
                 .limit(10)
                 .all()
             )
-            
+
             if recent_transactions:
                 print(f"{CLIColors.BOLD}Recent Transactions (Last 10):{CLIColors.ENDC}")
-                print(f"{'Date':<12} {'Amount':<12} {'Description'[:30]:<32} {'Account'}")
+                print(
+                    f"{'Date':<12} {'Amount':<12} {'Description'[:30]:<32} {'Account'}"
+                )
                 print("-" * 80)
-                
+
                 for txn in recent_transactions:
-                    date_str = txn.posted_at.strftime("%Y-%m-%d") if txn.posted_at else "Unknown"
+                    date_str = (
+                        txn.posted_at.strftime("%Y-%m-%d")
+                        if txn.posted_at
+                        else "Unknown"
+                    )
                     amount_str = f"${txn.amount:.2f}" if txn.amount else "N/A"
-                    desc = (txn.description[:29] + "...") if txn.description and len(txn.description) > 29 else (txn.description or "")
+                    desc = (
+                        (txn.description[:29] + "...")
+                        if txn.description and len(txn.description) > 29
+                        else (txn.description or "")
+                    )
                     account_name = txn.account.name if txn.account else "Unknown"
-                    
+
                     print(f"{date_str:<12} {amount_str:<12} {desc:<32} {account_name}")
             else:
                 self._print_info("No transactions found")
-                
+
             # Show Mercury account sync status
             print(f"\n{CLIColors.BOLD}Mercury Account Sync Status:{CLIColors.ENDC}")
             mercury_accounts = self.session.query(MercuryAccount).all()
-            
+
             for account in mercury_accounts:
                 status = "Active" if account.is_active else "Inactive"
-                last_sync = account.last_sync_at.strftime("%Y-%m-%d %H:%M") if account.last_sync_at else "Never"
+                last_sync = (
+                    account.last_sync_at.strftime("%Y-%m-%d %H:%M")
+                    if account.last_sync_at
+                    else "Never"
+                )
                 print(f"  {account.name}: {status}, Last sync: {last_sync}")
-                
+
             # Check for log files
             log_dir = "/app/logs"
             if os.path.exists(log_dir):
                 print(f"\n{CLIColors.BOLD}Log Files:{CLIColors.ENDC}")
-                log_files = [f for f in os.listdir(log_dir) if f.endswith('.log')]
+                log_files = [f for f in os.listdir(log_dir) if f.endswith(".log")]
                 for log_file in log_files:
                     log_path = os.path.join(log_dir, log_file)
                     size = os.path.getsize(log_path)
                     modified = datetime.fromtimestamp(os.path.getmtime(log_path))
-                    print(f"  {log_file}: {size} bytes, modified {modified.strftime('%Y-%m-%d %H:%M')}")
-                    
+                    print(
+                        f"  {log_file}: {size} bytes, modified {modified.strftime('%Y-%m-%d %H:%M')}"
+                    )
+
         except Exception as e:
             self._print_error(f"Error viewing sync logs: {str(e)}")
-            
+
     def _show_main_menu(self):
         """Display the main menu."""
         self._print_header("Mercury Bank Sync Service - CLI")
@@ -702,12 +831,11 @@ class MercurySyncCLI:
         print("4. View Sync Activity")
         print("5. Database Tools")
         print("6. Exit")
-        
+
     def _database_tools(self):
         """Database management tools."""
-        if not self._authenticate_user():
-            return
-            
+        admin_context = self._get_admin_user_context()
+
         while True:
             self._print_header("Database Tools")
             print("1. Run database migrations")
@@ -715,53 +843,62 @@ class MercurySyncCLI:
             print("3. Backup database")
             print("4. View database statistics")
             print("5. Back to main menu")
-            
+
             choice = self._get_input("\nSelect option (1-5): ")
-            
-            if choice == '1':
+
+            if choice == "1":
                 self._run_migrations()
-            elif choice == '2':
+            elif choice == "2":
                 self._check_schema()
-            elif choice == '3':
+            elif choice == "3":
                 self._backup_database()
-            elif choice == '4':
+            elif choice == "4":
                 self._database_statistics()
-            elif choice == '5':
+            elif choice == "5":
                 break
             else:
                 self._print_error("Invalid choice")
-                
-            if choice != '5':
+
+            if choice != "5":
                 self._pause()
-                
+
     def _run_migrations(self):
         """Run database migrations."""
         self._print_info("Running database migrations...")
-        
+
         try:
             # Import and run migration manager
             from migration_manager_sqlalchemy import run_migrations
+
             success = run_migrations()
-            
+
             if success:
                 self._print_success("Database migrations completed successfully")
             else:
                 self._print_error("Some migrations failed")
-                
+
         except ImportError:
             self._print_error("Migration manager not found")
         except Exception as e:
             self._print_error(f"Error running migrations: {str(e)}")
-            
+
     def _check_schema(self):
         """Check database schema."""
         try:
             # Check if all required tables exist
-            required_tables = ['users', 'user_settings', 'roles', 'user_role_association', 
-                             'mercury_accounts', 'accounts', 'transactions', 'system_settings']
-            
+            required_tables = [
+                "users",
+                "user_settings",
+                "roles",
+                "user_role_association",
+                "mercury_accounts",
+                "accounts",
+                "transactions",
+                "system_settings",
+            ]
+
             print(f"\n{CLIColors.BOLD}Database Schema Check:{CLIColors.ENDC}")
-            
+
             for table in required_tables:
                 try:
                     result = self.session.execute(text(f"SELECT COUNT(*) FROM {table}"))
@@ -769,89 +906,99 @@ class MercurySyncCLI:
                     self._print_success(f"Table '{table}': {count} records")
                 except Exception:
                     self._print_error(f"Table '{table}': Missing or inaccessible")
-                    
+
         except Exception as e:
             self._print_error(f"Error checking schema: {str(e)}")
-            
+
     def _backup_database(self):
         """Create a database backup."""
         self._print_info("Database backup functionality would be implemented here")
         self._print_info("For now, use your database's native backup tools")
-        
+
     def _database_statistics(self):
         """Show database statistics."""
         try:
             print(f"\n{CLIColors.BOLD}Database Statistics:{CLIColors.ENDC}")
-            
+
             # Table row counts
             tables = {
-                'users': User,
-                'mercury_accounts': MercuryAccount,
-                'accounts': Account,
-                'transactions': Transaction,
-                'roles': Role
+                "users": User,
+                "mercury_accounts": MercuryAccount,
+                "accounts": Account,
+                "transactions": Transaction,
+                "roles": Role,
             }
-            
+
             for table_name, model_class in tables.items():
                 count = self.session.query(model_class).count()
                 print(f"  {table_name}: {count:,} records")
-                
+
             # Date ranges
-            oldest_txn = self.session.query(Transaction).order_by(Transaction.posted_at.asc()).first()
-            newest_txn = self.session.query(Transaction).order_by(Transaction.posted_at.desc()).first()
-            
+            oldest_txn = (
+                self.session.query(Transaction)
+                .order_by(Transaction.posted_at.asc())
+                .first()
+            )
+            newest_txn = (
+                self.session.query(Transaction)
+                .order_by(Transaction.posted_at.desc())
+                .first()
+            )
+
             if oldest_txn and newest_txn:
                 print(f"\nTransaction date range:")
                 print(f"  Oldest: {oldest_txn.posted_at.strftime('%Y-%m-%d')}")
                 print(f"  Newest: {newest_txn.posted_at.strftime('%Y-%m-%d')}")
-                
+
         except Exception as e:
             self._print_error(f"Error getting database statistics: {str(e)}")
-            
+
     def run(self):
         """Main application loop."""
         # Print welcome message
         self._print_header("Mercury Bank Sync Service")
         self._print_info("Command-Line Interface")
-        print(f"{CLIColors.OKCYAN}Use this interface when the web GUI is not available{CLIColors.ENDC}")
-        
+        print(
+            f"{CLIColors.OKCYAN}Use this interface when the web GUI is not available{CLIColors.ENDC}"
+        )
+
         # Connect to database
         if not self._connect_database():
             self._print_error("Cannot continue without database connection")
             return
-            
+
         # Main loop
         while self.running:
             try:
                 self._show_main_menu()
                 choice = self._get_input("\nSelect option (1-6): ")
-                
-                if choice == '1':
+
+                if choice == "1":
                     self._show_system_status()
                     self._pause()
-                elif choice == '2':
+                elif choice == "2":
                     self._manage_mercury_accounts()
-                elif choice == '3':
+                elif choice == "3":
                     self._manage_users()
-                elif choice == '4':
+                elif choice == "4":
                     self._view_sync_logs()
                     self._pause()
-                elif choice == '5':
+                elif choice == "5":
                     self._database_tools()
-                elif choice == '6':
+                elif choice == "6":
                     self._print_info("Goodbye!")
                     break
                 else:
                     self._print_error("Invalid choice. Please select 1-6.")
                     self._pause()
-                    
+
             except KeyboardInterrupt:
                 print(f"\n{CLIColors.WARNING}Exiting...{CLIColors.ENDC}")
                 break
             except Exception as e:
                 self._print_error(f"Unexpected error: {str(e)}")
                 self._pause()
-                
+
         # Cleanup
         if self.session:
             self.session.close()

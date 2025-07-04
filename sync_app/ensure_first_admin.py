@@ -64,7 +64,12 @@ def ensure_first_user_is_admin():
         print(f"Promoting first user '{first_user.username}' to super-admin...")
         
         # Add super-admin role to first user
-        first_user.add_role(super_admin_role, session)
+        if super_admin_role not in first_user.roles:
+            first_user.roles.append(super_admin_role)
+        
+        # Also add admin role for extra access
+        if admin_role not in first_user.roles:
+            first_user.roles.append(admin_role)
         
         # For backward compatibility, also set is_admin in user settings
         if not first_user.settings:
