@@ -7,8 +7,6 @@ concurrency:
 on:
   push:
     branches: [dev]
-    paths: 
-      - 'web_app/**'
 
 jobs:
   deploy:
