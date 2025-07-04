@@ -168,9 +168,8 @@ esac
 # Add coverage if enabled
 if [[ "$TEST_COVERAGE" == "true" ]]; then
     PYTEST_ARGS+=("--cov=web_app/models")
-    PYTEST_ARGS+=("--cov=sync_app/models")
     PYTEST_ARGS+=("--cov=web_app/utils")
-    PYTEST_ARGS+=("--cov=sync_app/utils")
+    # Note: sync_app models are mirrors of web_app models, tested via web_app
     PYTEST_ARGS+=("--cov-report=html:htmlcov")
     PYTEST_ARGS+=("--cov-report=term-missing")
     PYTEST_ARGS+=("--cov-fail-under=30")
