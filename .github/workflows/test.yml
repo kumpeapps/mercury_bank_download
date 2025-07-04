@@ -76,6 +76,7 @@ jobs:
 
     - name: Run Alembic migrations
       run: |
+        cd sync_app
         python migrate.py test-connection
         python migrate.py upgrade
 

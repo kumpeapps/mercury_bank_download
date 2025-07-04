@@ -210,7 +210,7 @@ class TestRoleManagement:
         role1 = Role.get_or_create(
             test_db, 
             "new_role", 
-            "New role description", 
+            "New role description",
             is_system_role=True
         )
         assert role1.name == "new_role"

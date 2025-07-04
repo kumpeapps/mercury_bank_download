@@ -7,8 +7,6 @@ concurrency:
 on:
   push:
     branches: [main]
-    paths: 
-      - 'sync_app/**'
 
 jobs:
   deploy:

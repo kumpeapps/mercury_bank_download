@@ -25,12 +25,12 @@ The Mercury Bank application now features a complete universal database migratio
 
 2. **Startup Scripts**
    - `start_new.sh` (web app) - SQLAlchemy-based database checks
-   - `start_sync_new.sh` (sync service) - Universal database connectivity
+   - `start_sync.sh` (sync service) - Alembic migration management
    - Replaced MySQL-specific connection logic
 
 3. **Dockerfiles Updated**
    - Web app Dockerfile now uses `start_new.sh`
-   - Main Dockerfile now uses `start_sync_new.sh`
+   - Main Dockerfile now uses `start_sync.sh` for Alembic migrations
    - Both ensure migrations run before application startup
 
 4. **Requirements Updated**

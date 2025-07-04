@@ -69,23 +69,23 @@ def create_initial_roles(engine):
             {
                 "name": "user",
                 "description": "Standard user with basic access to their own data",
-                "is_system_role": True,
+                "is_system_role": True
             },
             {
                 "name": "admin",
                 "description": "Administrator with full system access",
-                "is_system_role": True,
+                "is_system_role": True
             },
             {
                 "name": "super-admin",
                 "description": "Super administrator with complete system control",
-                "is_system_role": True,
+                "is_system_role": True
             },
             {
                 "name": "reports",
                 "description": "User with access to reporting features",
-                "is_system_role": True,
-            },
+                "is_system_role": True
+            }
         ]
 
         for role_data in initial_roles:
