@@ -96,7 +96,7 @@ import sys
 try:
     result = subprocess.run(['python', '-m', 'alembic', 'heads'], 
                           capture_output=True, text=True, check=True)
-    revision = result.stdout.strip()
+    revision = result.stdout.strip().split()[0]  # Get only the revision ID, not '(head)'
     print(revision)
 except Exception as e:
     print('a602c915f72d', file=sys.stderr)  # fallback to known latest
