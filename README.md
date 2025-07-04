@@ -217,7 +217,6 @@ Users ←→ UserMercuryAccount ←→ MercuryAccounts
 | `first_name` | VARCHAR(100) | User's first name |
 | `last_name` | VARCHAR(100) | User's last name |
 | `is_active` | BOOLEAN | Account active status |
-| `is_admin` | BOOLEAN | Administrative privileges |
 | `last_login` | TIMESTAMP | Last login time |
 | `created_at` | TIMESTAMP | Record creation time |
 | `updated_at` | TIMESTAMP | Last update time |

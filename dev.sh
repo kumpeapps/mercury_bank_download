@@ -27,22 +27,17 @@ show_usage() {
     echo "  encrypt-keys   - Encrypt existing API keys"
     echo "  test-encrypt   - Test encryption functionality"
     echo ""
-    echo "User & Role Management:"
-    echo "  create-admin   - Create first admin user"
-    echo "  create-super-admin - Create first super-admin user"
-    echo "  assign-role    - Assign a role to a user"
-    echo "  remove-role    - Remove a role from a user"
-    echo "  add-user       - Create a new user account"
-    echo "  delete-user    - Delete a user account"
+    echo "User Management:"
+    echo "  first-admin    - Ensure first user has admin privileges"
     echo "  list-users     - List all users and their roles"
-    echo "  list-by-role   - List users with a specific role"
-    echo "  list-roles     - List all available roles"
-    echo "  create-role    - Create a new role"
-    echo "  ensure-admin   - Ensure first user is admin (migration)"
-    echo "  toggle-signup  - Enable/disable user registration"
-    echo "  toggle-user-deletion - Enable/disable prevention of user deletion"
+    echo "  user-count     - Show total number of users"
+    echo "  promote-admin  - Promote a user to admin (requires username)"
+    echo "  promote-super  - Promote a user to super-admin (requires username)"
     echo ""
-    echo "Command-Line Interface:"
+    echo "Development:"
+    echo "  shell-sync     - Open shell in sync container"
+    echo "  shell-web      - Open shell in web container" 
+    echo "  shell-db       - Open MySQL shell"
     echo "  cli-gui        - Launch text-based GUI for sync service"
     echo ""
 }
@@ -142,6 +137,7 @@ case "$1" in
             
             echo "✅ Database reset complete!"
             echo "You can now register a new first user who will automatically become admin."
+            echo "Or use './dev.sh first-admin' to promote the first existing user."
         else
             echo "Database reset cancelled."
         fi
@@ -159,92 +155,6 @@ case "$1" in
         docker-compose exec web-app python test_encryption.py
         ;;
     
-    "create-admin")
-        echo "Creating first admin user..."
-        docker-compose exec web-app python admin_user.py create
-        ;;
-    
-    "create-super-admin")
-        echo "Creating first super-admin user..."
-        docker-compose exec web-app python admin_user.py create_super_admin
-        ;;
-    
-    "assign-role")
-        if [ -z "$2" ] || [ -z "$3" ]; then
-            echo "Usage: $0 assign-role <username> <role>"
-            exit 1
-        fi
-        echo "Assigning role '$3' to user '$2'..."
-        docker-compose exec web-app python admin_user.py assign_role "$2" "$3"
-        ;;
-    
-    "remove-role")
-        if [ -z "$2" ] || [ -z "$3" ]; then
-            echo "Usage: $0 remove-role <username> <role>"
-            exit 1
-        fi
-        echo "Removing role '$3' from user '$2'..."
-        docker-compose exec web-app python admin_user.py remove_role "$2" "$3"
-        ;;
-    
-    "list-by-role")
-        if [ -z "$2" ]; then
-            echo "Usage: $0 list-by-role <role>"
-            exit 1
-        fi
-        echo "Listing users with role '$2'..."
-        docker-compose exec web-app python admin_user.py list_by_role "$2"
-        ;;
-    
-    "list-roles")
-        echo "Listing all available roles..."
-        docker-compose exec web-app python admin_user.py list_roles
-        ;;
-    
-    "create-role")
-        echo "Creating new role..."
-        docker-compose exec web-app python admin_user.py create_role
-        ;;
-    
-    "ensure-admin")
-        echo "Ensuring first user is admin..."
-        docker-compose exec web-app python ensure_first_admin.py
-        ;;
-    
-    "add-user")
-        echo "Creating a new user account..."
-        docker-compose exec web-app python admin_user.py add
-        ;;
-    
-    "delete-user")
-        if [ -z "$2" ]; then
-            echo "Usage: $0 delete-user <username>"
-            exit 1
-        fi
-        echo "Deleting user account '$2'..."
-        docker-compose exec web-app python admin_user.py delete "$2"
-        ;;
-    
-    "list-users")
-        echo "Listing all users..."
-        docker-compose exec web-app python admin_user.py list
-        ;;
-    
-    "toggle-signup")
-        echo "Toggling user registration..."
-        docker-compose exec web-app python admin_user.py toggle_signup
-        ;;
-    
-    "toggle-user-deletion")
-        echo "Toggling user deletion prevention..."
-        docker-compose exec web-app python admin_user.py toggle_user_deletion
-        ;;
-    
-    "cli-gui")
-        echo "Starting command-line GUI for sync service..."
-        docker-compose exec mercury-sync python cli_gui.py
-        ;;
-    
     "shell-sync")
         docker-compose exec mercury-sync /bin/bash
         ;;
@@ -254,7 +164,151 @@ case "$1" in
         ;;
     
     "shell-db")
-        docker-compose exec mysql mysql -u mercury_user -p mercury_db
+        docker-compose exec mysql mysql -u mercury_user -p mercury_bank
+        ;;
+    
+    "cli-gui")
+        echo "Launching text-based GUI for sync service..."
+        docker-compose exec mercury-sync python cli_gui.py
+        ;;
+    
+    "first-admin")
+        echo "Ensuring first user has admin privileges..."
+        docker-compose exec web-app python ensure_first_admin.py
+        ;;
+    
+    "list-users")
+        echo "Listing all users and their roles..."
+        docker-compose exec web-app python -c "
+import os
+import sys
+sys.path.append('/app')
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from models.user import User
+from models.role import Role
+
+database_url = os.environ.get('DATABASE_URL')
+engine = create_engine(database_url)
+Session = sessionmaker(bind=engine)
+session = Session()
+
+users = session.query(User).all()
+print('\\nUsers and Roles:')
+print('=' * 50)
+for user in users:
+    roles = [role.name for role in user.roles]
+    roles_str = ', '.join(roles) if roles else 'No roles assigned'
+    print(f'User: {user.username}')
+    print(f'  Roles: {roles_str}')
+    print(f'  Created: {user.created_at}')
+    print()
+session.close()
+"
+        ;;
+    
+    "user-count")
+        echo "Checking user count..."
+        docker-compose exec web-app python -c "
+import os
+import sys
+sys.path.append('/app')
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from models.user import User
+
+database_url = os.environ.get('DATABASE_URL')
+engine = create_engine(database_url)
+Session = sessionmaker(bind=engine)
+session = Session()
+
+count = session.query(User).count()
+print(f'Total users in database: {count}')
+session.close()
+"
+        ;;
+    
+    "promote-admin")
+        if [ -z "$2" ]; then
+            echo "Usage: $0 promote-admin <username>"
+            exit 1
+        fi
+        echo "Promoting user '$2' to admin..."
+        docker-compose exec web-app python -c "
+import os
+import sys
+sys.path.append('/app')
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from models.user import User
+from models.role import Role
+
+database_url = os.environ.get('DATABASE_URL')
+engine = create_engine(database_url)
+Session = sessionmaker(bind=engine)
+session = Session()
+
+username = '$2'
+user = session.query(User).filter_by(username=username).first()
+if not user:
+    print(f'User {username} not found')
+    sys.exit(1)
+
+admin_role = Role.get_or_create(session, 'admin')
+user_role = Role.get_or_create(session, 'user')
+
+if user_role not in user.roles:
+    user.roles.append(user_role)
+if admin_role not in user.roles:
+    user.roles.append(admin_role)
+
+session.commit()
+print(f'User {username} promoted to admin')
+session.close()
+"
+        ;;
+    
+    "promote-super")
+        if [ -z "$2" ]; then
+            echo "Usage: $0 promote-super <username>"
+            exit 1
+        fi
+        echo "Promoting user '$2' to super-admin..."
+        docker-compose exec web-app python -c "
+import os
+import sys
+sys.path.append('/app')
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from models.user import User
+from models.role import Role
+
+database_url = os.environ.get('DATABASE_URL')
+engine = create_engine(database_url)
+Session = sessionmaker(bind=engine)
+session = Session()
+
+username = '$2'
+user = session.query(User).filter_by(username=username).first()
+if not user:
+    print(f'User {username} not found')
+    sys.exit(1)
+
+user_role = Role.get_or_create(session, 'user')
+admin_role = Role.get_or_create(session, 'admin')
+super_admin_role = Role.get_or_create(session, 'super-admin')
+
+if user_role not in user.roles:
+    user.roles.append(user_role)
+if admin_role not in user.roles:
+    user.roles.append(admin_role)
+if super_admin_role not in user.roles:
+    user.roles.append(super_admin_role)
+
+session.commit()
+print(f'User {username} promoted to super-admin')
+session.close()
+"
         ;;
     
     *)

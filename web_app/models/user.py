@@ -3,7 +3,7 @@
 from sqlalchemy import Column, String, DateTime, Boolean, text, Integer
 from sqlalchemy.orm import relationship
 from werkzeug.security import generate_password_hash, check_password_hash
-from passlib.hash import phpass
+from passlib.hash import phpass # type: ignore
 from .base import Base, user_mercury_account_association, user_account_access
 from .role import user_role_association
 
@@ -127,14 +127,7 @@ class User(Base):
         Returns:
             bool: True if user has admin privileges, False otherwise
         """
-        # Check first for the admin role
-        if self.has_role('admin'):
-            return True
-        
-        # Fallback to legacy settings-based admin check
-        if not self.settings:
-            return False
-        return self.settings.is_admin
+        return self.has_role('admin') or self.has_role("super-admin")
         
     @property
     def is_super_admin(self):

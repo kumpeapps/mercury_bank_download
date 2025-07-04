@@ -167,14 +167,16 @@ class MercurySyncCLI:
                     .first()
                 )
 
-            # Fallback to legacy admin
+            # Fallback to admin role
             if not admin_user:
-                admin_user = (
+                admin_users = (
                     self.session.query(User)
-                    .join(UserSettings)
-                    .filter(UserSettings.is_admin == True)
-                    .first()
+                    .join(User.roles)
+                    .filter(Role.name == 'admin')
+                    .all()
                 )
+                if admin_users:
+                    admin_user = admin_users[0]
 
             if admin_user:
                 self._print_info(f"Operating as admin user: {admin_user.username}")
@@ -590,7 +592,7 @@ class MercurySyncCLI:
                 new_user.roles.append(user_role)
 
             # Create user settings
-            user_settings = UserSettings(user_id=new_user.id, is_admin=False)
+            user_settings = UserSettings(user_id=new_user.id)
             self.session.add(user_settings)
 
             self.session.commit()

@@ -46,6 +46,10 @@ fi
 # Database initialization is handled by the sync service
 echo "ℹ️  Database schema is managed by the sync service"
 
+# Initialize system roles (backup in case sync service hasn't run)
+echo "🔧 Ensuring system roles are initialized..."
+python initialize_roles.py || echo "⚠️  Role initialization failed - continuing anyway"
+
 # Ensure super admin user is promoted (if specified)
 echo "👑 Checking super admin user..."
 python ensure_super_admin.py

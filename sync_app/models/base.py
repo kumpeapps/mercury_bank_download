@@ -1,5 +1,5 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import create_engine, Column, Integer, ForeignKey, Table, text
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Table, text
 from sqlalchemy.orm import sessionmaker
 import os
 
@@ -12,6 +12,17 @@ user_mercury_account_association = Table(
     Base.metadata,
     Column("user_id", Integer, ForeignKey("users.id"), primary_key=True),
     Column("mercury_account_id", Integer, ForeignKey("mercury_accounts.id"), primary_key=True),
+)
+
+# Association table for granular user access to specific accounts within mercury accounts
+# When this table has entries for a user, it restricts access to only those specific accounts
+# If no entries exist for a user, they have access to all accounts in their mercury accounts (default behavior)
+# Note: user_id does not have a foreign key constraint because users table might be a view
+user_account_access = Table(
+    "user_account_access",
+    Base.metadata,
+    Column("user_id", Integer, primary_key=True),
+    Column("account_id", String(255), ForeignKey("accounts.id"), primary_key=True),
 )
 
 # Association table for many-to-many relationship between users and roles

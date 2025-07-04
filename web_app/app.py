@@ -160,10 +160,10 @@ def initialize_system_settings():
                 print(f"✅ Updated users_externally_managed setting to: {value}")
                 
         # Apply fallback logic: if no admin users exist, enable registration regardless of settings
+        from models.role import Role
         admin_count = (
             db_session.query(User)
-            .join(UserSettings)
-            .filter(UserSettings.is_admin == True)
+            .filter(User.roles.any(Role.name.in_(["admin", "super-admin"])))
             .count()
         )
         
@@ -400,7 +400,6 @@ def inject_user():
             user = db_session.query(User).filter_by(id=current_user.id).first()
             if user:
                 # Force load any lazy attributes we might need in templates
-                _ = user.is_admin  # This should load the attribute
                 _ = user.username  # This should load the attribute
                 # Store the session in Flask's g object for cleanup
                 g.template_db_session = db_session
@@ -730,7 +729,7 @@ def admin_required(f):
         db_session = Session()
         try:
             user = db_session.query(User).get(current_user.id)
-            if not user or (not user.is_admin and not user.is_super_admin):
+            if not user or (not user.has_role('admin') and not user.has_role('super-admin')):
                 flash("Access denied. Admin privileges required.", "error")
                 return redirect(url_for("dashboard"))
         finally:
@@ -873,12 +872,48 @@ def register():
             db_session.add(new_user)
             db_session.flush()  # Flush to get the user ID
 
-            # Create user settings and set admin status for first user
-            from models.user_settings import UserSettings
+            # Assign roles to the new user
+            try:
+                from models.role import Role
+                
+                # All users get the basic "user" role
+                user_role = Role.get_or_create(db_session, "user", 
+                                             "Basic user with read access to their own data", 
+                                             is_system_role=True)
+                new_user.roles.append(user_role)
+                
+                # If this is the first user, also grant admin and super-admin roles
+                if is_first_user:
+                    admin_role = Role.get_or_create(db_session, "admin", 
+                                                  "Administrator with full system access", 
+                                                  is_system_role=True)
+                    super_admin_role = Role.get_or_create(db_session, "super-admin", 
+                                                        "Super administrator with all privileges including user management", 
+                                                        is_system_role=True)
+                    new_user.roles.append(admin_role)
+                    new_user.roles.append(super_admin_role)
+                
+            except Exception as role_error:
+                print(f"🚨 ERROR during role assignment: {role_error}")
+                import traceback
+                print(f"🚨 Full traceback: {traceback.format_exc()}")
+                # Continue with user creation but without roles
+                flash(f"User created but role assignment failed: {role_error}", "warning")
 
-            user_settings = UserSettings(user_id=new_user.id, is_admin=is_first_user)
-            db_session.add(user_settings)
-            db_session.commit()
+            # Create user settings
+            try:
+                from models.user_settings import UserSettings
+
+                user_settings = UserSettings(user_id=new_user.id)
+                db_session.add(user_settings)
+                db_session.commit()
+            except Exception as settings_error:
+                print(f"🚨 ERROR during user settings creation: {settings_error}")
+                import traceback
+                print(f"🚨 Full traceback: {traceback.format_exc()}")
+                db_session.rollback()
+                flash(f"User creation failed: {settings_error}", "error")
+                return render_template("register.html")
 
             if is_first_user:
                 flash(
@@ -1850,7 +1885,7 @@ def admin_settings():
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not user_in_session.is_admin:
+        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
@@ -1919,7 +1954,7 @@ def manage_mercury_access(mercury_account_id):
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not user_in_session.is_admin:
+        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
@@ -2068,15 +2103,15 @@ def admin_users():
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not user_in_session.is_admin:
+        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
         # Get all users
         all_users = db_session.query(User).all()
 
-        # Get admin users
-        admin_users = [user for user in all_users if user.is_admin]
+        # Get admin users (using role-based system)
+        admin_users = [user for user in all_users if user.has_role('admin') or user.has_role('super-admin')]
 
         # Get user deletion prevention setting
         prevent_user_deletion = SystemSetting.get_bool_value(
@@ -2114,7 +2149,7 @@ def add_user_form():
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not user_in_session.is_admin:
+        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
@@ -2149,7 +2184,7 @@ def add_user_submit():
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not user_in_session.is_admin:
+        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
@@ -2208,10 +2243,8 @@ def add_user_submit():
             else:
                 logging.warning(f"Requested role '{role_name}' does not exist in the database. Possible typo or misconfiguration.")
 
-        # Create user settings (maintain backward compatibility)
-        # Set is_admin flag based on assigned roles
-        has_admin_role = any(role_name in ['admin', 'super-admin'] for role_name in selected_roles)
-        user_settings = UserSettings(user_id=new_user.id, is_admin=has_admin_role)
+        # Create user settings
+        user_settings = UserSettings(user_id=new_user.id)
         db_session.add(user_settings)
         db_session.commit()
 
@@ -2223,28 +2256,6 @@ def add_user_submit():
         return redirect(url_for("add_user_form"))
     finally:
         db_session.close()
-
-
-# Legacy route - deprecated in favor of role-based management
-# @app.route("/admin/users/<int:user_id>/promote", methods=["POST"])
-# @login_required
-# @super_admin_required
-# def promote_to_admin(user_id):
-#     """Promote a user to admin status."""
-#     # This route is deprecated. Use role management instead.
-#     flash("This feature has been deprecated. Please use the role management interface.", "warning")
-#     return redirect(url_for("admin_users"))
-
-
-# Legacy route - deprecated in favor of role-based management
-# @app.route("/admin/users/<int:user_id>/demote", methods=["POST"])
-# @login_required
-# @super_admin_required
-# def demote_admin(user_id):
-#     """Remove admin privileges from a user."""
-#     # This route is deprecated. Use role management instead.
-#     flash("This feature has been deprecated. Please use the role management interface.", "warning")
-#     return redirect(url_for("admin_users"))
 
 
 @app.route("/admin/users/<int:user_id>/lock", methods=["POST"])
@@ -2365,12 +2376,12 @@ def delete_user_by_id(user_id):
             return redirect(url_for("admin_users"))
 
         # Check if user is an admin
-        if user.is_admin:
+        from models.role import Role
+        if user.has_role('admin') or user.has_role('super-admin'):
             # Check if this is the last admin
             admin_count = (
                 db_session.query(User)
-                .join(UserSettings)
-                .filter(UserSettings.is_admin == True)
+                .filter(User.roles.any(Role.name.in_(["admin", "super-admin"])))
                 .count()
             )
             if admin_count <= 1:
@@ -2594,11 +2605,6 @@ def user_settings():
             dashboard_prefs = {}
             report_prefs = {}
             transaction_prefs = {}
-
-            # Handle admin privileges (only admins can modify this)
-            if user_in_session.is_admin:
-                admin_checkbox = request.form.get("is_admin") == "on"
-                settings.is_admin = admin_checkbox
 
             # Dashboard preferences
             if request.form.get("dashboard_show_pending") == "on":

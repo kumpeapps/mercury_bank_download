@@ -62,6 +62,15 @@ else
     exit 1
 fi
 
+# Initialize system roles
+echo "🔧 Initializing system roles..."
+if python initialize_roles.py; then
+    echo "✅ System roles initialized"
+else
+    echo "❌ Role initialization failed"
+    exit 1
+fi
+
 # Ensure super admin user is promoted (if specified)
 echo "👑 Checking super admin user..."
 python ensure_super_admin.py

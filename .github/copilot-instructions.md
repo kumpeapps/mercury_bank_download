@@ -27,12 +27,11 @@ This is a Mercury Bank Integration Platform consisting of two main components:
 
 3. **Role-Based Access Control**
    - Use the role-based system for all user management
-   - Legacy admin features (is_admin flag, promote/demote commands) are DEPRECATED
    - Users must have appropriate roles: "user", "admin", "super-admin", etc.
-   - Use role management interface and commands for user permissions
+   - All permissions are managed through the role system
 
 4. **Admin Features**
-   - First user is automatically an admin
+   - First user is automatically assigned admin and super-admin roles
    - SUPER_ADMIN_USERNAME environment variable defines a user that always has admin privileges
    - System settings control features like user registration and user deletion
 
@@ -48,12 +47,6 @@ This is a Mercury Bank Integration Platform consisting of two main components:
    - Both apps share the same database schema
    - Changes to one model directory should be replicated in the other
 
-7. **Legacy Features - DEPRECATED**
-   - Legacy admin_user.py scripts have been archived
-   - MERCURY_API_KEY environment variable is no longer used (API keys stored in database)
-   - Legacy promote-admin, demote-admin, list-admin commands removed
-   - Use role-based system instead of is_admin flag for new development
-
 ## Common Tasks
 
 - **Add New Model**: Define in both sync_app/models/ and web_app/models/
@@ -68,14 +61,7 @@ Use the `dev.sh` script for common development tasks such as:
 - Building images: Use `./dev.sh rebuild-dev` to rebuild and restart development environment
 - Running schemas: Schema creation runs automatically at container startup
 - Resetting the database: `./dev.sh reset-db`
-- Managing users and roles: 
-  - `./dev.sh assign-role <username> <role>` - Assign roles to users
-  - `./dev.sh remove-role <username> <role>` - Remove roles from users
-  - `./dev.sh list-by-role <role>` - List users with specific roles
-  - `./dev.sh list-roles` - List all available roles
-  - `./dev.sh create-role` - Create new roles
-  - `./dev.sh add-user` - Add new users with role selection
-  - `./dev.sh list-users` - List all users and their roles
+- User and role management: Use the web interface at `/admin/users` for all user and role management tasks
 
 ### Schema Creation Guidelines
 - Schema creation is performed automatically when containers start

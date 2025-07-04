@@ -53,10 +53,7 @@ mysql -u user -p mercury_bank < add_system_settings.sql
 ```
 
 ### 2. Create Admin User
-Ensure at least one user has admin privileges:
-```sql
-UPDATE users SET is_admin = TRUE WHERE username = 'your_admin_username';
-```
+Ensure at least one user has admin privileges by using the web interface at `/admin/users` or ensuring the first user gets automatic admin rights.
 
 ### 3. Restart Web Application
 Restart the Flask application to load the new features.
@@ -136,7 +133,7 @@ The system automatically detects if the `users` table is a view and disables sig
 - Check `system_settings` table for `signup_enabled` value
 
 #### Cannot access admin settings
-- Ensure user has `is_admin = TRUE` in database
+- Ensure user has the 'admin' or 'super-admin' role
 - Check if user is logged in with admin account
 
 #### Cannot manage Mercury account access
@@ -146,8 +143,12 @@ The system automatically detects if the `users` table is a view and disables sig
 ### Database Queries for Debugging
 
 ```sql
--- Check admin users
-SELECT username, is_admin FROM users WHERE is_admin = TRUE;
+-- Check admin users (using role-based system)
+SELECT u.username, r.name as role 
+FROM users u
+JOIN user_roles ur ON u.id = ur.user_id
+JOIN roles r ON ur.role_id = r.id
+WHERE r.name IN ('admin', 'super-admin');
 
 -- Check system settings
 SELECT * FROM system_settings;
@@ -183,7 +184,7 @@ Starting with this update, the **first user to register** in the system is **aut
 #### How It Works
 
 1. When a user registers, the system checks if they are the first user (user count = 0)
-2. If they are the first user, their `UserSettings.is_admin` field is automatically set to `True`
+2. If they are the first user, they are automatically assigned admin and super-admin roles
 3. The registration confirmation message indicates when admin privileges have been granted
 
 ### Managing Admin Users
