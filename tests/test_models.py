@@ -112,7 +112,8 @@ class TestRoleModel:
         """Test basic role creation."""
         role = Role(
             name="test_role",
-            description="Test role description"
+            description="Test role description",
+            is_system_role=False
         )
         test_db.add(role)
         test_db.commit()
@@ -122,6 +123,7 @@ class TestRoleModel:
         assert retrieved_role is not None
         assert retrieved_role.name == "test_role"
         assert retrieved_role.description == "Test role description"
+        assert retrieved_role.is_system_role is False
         assert retrieved_role.created_at is not None
         assert retrieved_role.updated_at is not None
     
@@ -131,28 +133,32 @@ class TestRoleModel:
         role1 = Role.get_or_create(
             test_db,
             "new_role",
-            "New role description"
+            "New role description",
+            is_system_role=True
         )
         test_db.commit()
         
         assert role1.name == "new_role"
         assert role1.description == "New role description"
+        assert role1.is_system_role is True
         
         # Test getting existing role
         role2 = Role.get_or_create(
             test_db,
             "new_role",
-            "Different description"  # Should be ignored
+            "Different description",  # Should be ignored
+            is_system_role=False  # Should be ignored
         )
         
         # Should return same role
         assert role1.id == role2.id
         assert role2.description == "New role description"  # Original preserved
+        assert role2.is_system_role is True  # Original preserved
     
     def test_role_user_relationship(self, test_db):
         """Test role-user many-to-many relationship."""
         # Create role
-        role = Role(name="test_role", description="Test role")
+        role = Role(name="test_role", description="Test role", is_system_role=False)
         test_db.add(role)
         test_db.flush()
         

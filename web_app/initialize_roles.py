@@ -58,7 +58,8 @@ def initialize_system_roles():
                     # Create new role
                     role = Role(
                         name=role_data["name"],
-                        description=role_data["description"]
+                        description=role_data["description"],
+                        is_system_role=role_data["is_system_role"]
                     )
                     session.add(role)
                     created_count += 1
