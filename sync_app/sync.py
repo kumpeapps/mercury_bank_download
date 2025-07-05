@@ -237,6 +237,20 @@ class MercuryBankSyncer:
                                 ),
                             )
                             db.add(new_account)
+
+                            # Create initial receipt policy for the new account
+                            try:
+                                db.flush()  # Ensure account is persisted before creating policy
+                                new_account.update_receipt_policy(
+                                    receipt_required_deposits="none",  # Default to no receipt requirements
+                                    receipt_threshold_deposits=None,
+                                    receipt_required_charges="none",
+                                    receipt_threshold_charges=None
+                                )
+                                logger.info("Created initial receipt policy for account: %s", account_id)
+                            except Exception as e:
+                                logger.error("Failed to create receipt policy for account %s: %s", account_id, str(e))
+
                             logger.info("Created new account: %s", account_id)
 
                         synced_count += 1

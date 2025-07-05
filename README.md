@@ -1,11 +1,23 @@
-I used AI to write this readme file, it does have errors and I will re-write it as soon as I have a chance.
-
 # Mercury Bank Integration Platform
 
 A comprehensive platform for Mercury Bank data synchronization and management, consisting of two main components:
 
 1. **Sync Service** (`sync_app/`) - Automated data synchronization from Mercury Bank API
 2. **Web Interface** (`web_app/`) - User-friendly web dashboard for data management and reporting
+
+## 🎉 What's New in v2.0.1
+
+- **Enhanced Chart Controls** - Reports now show main categories by default with toggle for sub-categories
+- **Improved User Experience** - Cleaner, simplified chart views with drill-down capability
+- **Dynamic Chart Updates** - One-click toggle between category and sub-category views
+
+### Previous Updates (v2.0.0)
+
+- **Mercury Account User Management** - Add/remove user access to Mercury accounts through CLI
+- **Enhanced CLI Interface** - Improved command-line interface with additional management features
+- **Comprehensive Testing** - Complete test suite with 38 test cases
+- **Security Improvements** - Strengthened role-based access control
+- **Documentation Updates** - Complete CLI documentation and improved README
 
 ## 🏗️ Project Structure
 
@@ -49,7 +61,7 @@ mercury_bank_download/
 - 🔐 **Granular Access Control** - Account-level permissions and restrictions
 - 📊 **Interactive Dashboard** - Real-time financial data visualization
 - 💰 **Transaction Management** - Search, filter, and categorize transactions
-- 📈 **Reporting & Analytics** - Charts, trends, and financial insights
+- 📈 **Reporting & Analytics** - Interactive charts with category/sub-category toggle, trends, and financial insights
 - 🎯 **Default Account Settings** - User-customizable default views
 - 📱 **Responsive Design** - Works on desktop, tablet, and mobile devices
 
@@ -60,6 +72,12 @@ mercury_bank_download/
 - **Docker & Docker Compose** (recommended)
 - **Mercury Bank API Key** ([Get yours here](https://mercury.com/developers))
 - **Database Server** - MySQL, PostgreSQL, or other SQLAlchemy-supported database
+
+### Access Methods
+
+- **Web Interface**: Access via browser at http://localhost:5001 (default)
+- **CLI Interface**: Access via `./dev.sh cli-gui` or `docker-compose exec mercury-sync python cli_gui.py`
+- **Database Admin**: Access via browser at http://localhost:8080 (default)
 
 ### Option 1: Production Deployment (Recommended)
 
@@ -275,6 +293,93 @@ Users ←→ UserMercuryAccount ←→ MercuryAccounts
 |-------|------|-------------|
 | `user_id` | VARCHAR(255) FK | Reference to users |
 | `mercury_account_id` | VARCHAR(255) FK | Reference to mercury_accounts |
+
+## 🧪 Testing
+
+The platform includes a comprehensive test suite to ensure reliability and correct functionality:
+
+### Running Tests
+
+```bash
+# Run all tests with coverage report
+./run_tests.sh
+
+# Run tests without coverage
+./run_tests.sh --no-coverage
+
+# Run specific test patterns
+./run_tests.sh --pattern="test_user_*"
+
+# Run with verbose output
+./run_tests.sh --verbose
+```
+
+### Test Categories
+
+The test suite covers three main areas:
+
+#### Model Tests (17 test cases)
+- User model creation and password handling
+- Role-based permissions and relationships
+- User settings and system settings
+- Mercury account and transaction relationships
+
+#### User Registration Tests (9 test cases)
+- First user automatically receives admin roles
+- Subsequent users get only user role
+- Password hashing and validation
+- Username uniqueness enforcement
+
+#### Web Integration Tests (12 test cases)
+- Registration workflow and form processing
+- Authentication flow (login/logout)
+- Permission enforcement for protected routes
+- System settings and error handling
+
+### Key Validations
+- Role assignment logic works correctly
+- Authentication security is properly implemented
+- Permission system follows role-based access control
+- Database integrity is maintained
+- Error handling follows best practices
+
+## 🖥️ Command-Line Interface
+
+The platform includes a powerful command-line interface (CLI) for system management without requiring the web interface:
+
+### Accessing the CLI
+
+```bash
+# Using the development helper script (recommended)
+./dev.sh cli-gui
+
+# Direct Docker execution
+docker-compose exec mercury-sync python cli_gui.py
+
+# Using the standalone launcher
+./sync_app/launch_cli.sh
+```
+
+### CLI Features
+
+The CLI provides comprehensive system management capabilities:
+
+- **System Status** - Database connection, user counts, configuration overview
+- **Mercury Account Management** - Add, edit, enable/disable Mercury accounts
+- **User Management** - Create users, manage roles, reset passwords
+- **Sync Activity** - View transactions, check sync status, monitor logs
+- **Database Tools** - Run migrations, check schema, view statistics
+
+### Mercury Account User Management
+
+The CLI supports complete user access management for Mercury accounts:
+
+- View which users have access to Mercury accounts
+- Add user access to Mercury accounts
+- Remove user access from Mercury accounts
+- Enforce security by preventing inaccessible accounts
+
+For complete CLI documentation, see [CLI_GUI_DOCUMENTATION.md](CLI_GUI_DOCUMENTATION.md).
 
 ## 🔧 Usage Examples
 
@@ -643,20 +748,15 @@ docker-compose logs mercury-sync | grep "SQLAlchemy"
 
 ## 🆕 What's New
 
-### Version 2.0+ Features
+### Version 2.0.1+ Features
 
 - ✅ **Multi-Account Architecture** - Manage multiple Mercury Bank accounts
 - ✅ **User Management System** - Role-based access control
 - ✅ **Sandbox Environment** - Built-in testing support
 - ✅ **Enhanced Docker Support** - Multiple image variants
 - ✅ **Improved Error Handling** - Better resilience and recovery
-- ✅ **Health Monitoring** - Comprehensive status reporting
-- ✅ **Migration Tools** - Easy upgrade from v1.x
-
-### Roadmap
-
-- 🔄 **Real-time Webhooks** - Instant transaction notifications
-- 📊 **Analytics Dashboard** - Transaction insights and reporting
+- ✅ **Analytics Dashboard** - Interactive transaction insights and category-based reporting
+- ✅ **Enhanced Chart Controls** - Dynamic category/sub-category toggle views
 - 🔐 **Enhanced Security** - OAuth2 and API key rotation
 - 📱 **Mobile API** - REST API for mobile applications
 - 🚀 **Performance Optimization** - Parallel sync processing

@@ -6,7 +6,7 @@ A modern, responsive web application for managing Mercury Bank accounts and anal
 
 - **🔐 User Authentication**: Secure login system with user registration
 - **🏦 Multi-Account Management**: Connect and manage multiple Mercury Bank accounts
-- **📊 Interactive Reports**: Beautiful charts showing spending patterns and budget analysis
+- **📊 Interactive Reports**: Beautiful charts with category/sub-category toggle, showing spending patterns and budget analysis
 - **💳 Transaction Management**: View, filter, and categorize transactions
 - **📈 Month-over-Month Analysis**: Track budget trends by category over time
 - **🎨 Modern UI**: Responsive design with Bootstrap 5 and Font Awesome icons
@@ -20,8 +20,8 @@ A modern, responsive web application for managing Mercury Bank accounts and anal
 - Recent transaction history
 
 ### Reports
-- Interactive budget trend charts (Month-over-Month)
-- Expense breakdown pie charts
+- Interactive budget trend charts (Month-over-Month) with category/sub-category toggle
+- Expense breakdown pie charts with main category or detailed sub-category views
 - Customizable time periods
 - Category-based analysis using transaction notes
 

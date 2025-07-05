@@ -49,6 +49,27 @@
                     <div class="mb-4">
                         <h6 class="text-muted">Receipt Requirements</h6>
                         
+                        <!-- Schedule Future Change -->
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="use_future_date" name="use_future_date">
+                                <label class="form-check-label" for="use_future_date">
+                                    <strong>Schedule for future date</strong>
+                                </label>
+                                <div class="form-text">
+                                    When enabled, these receipt policy changes will take effect on the specified date instead of immediately.
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Future Start Date -->
+                        <div class="mb-3" id="future_date_section" style="display: none;">
+                            <label for="future_start_date" class="form-label">Start Date</label>
+                            <input type="date" class="form-control" id="future_start_date" name="future_start_date" 
+                                   min="{{ today_date }}" value="{{ today_date }}">
+                            <div class="form-text">The date when this new receipt policy will take effect</div>
+                        </div>
+                        
                         <!-- Deposits Receipt Requirements -->
                         <div class="mb-3">
                             <label for="receipt_required_deposits" class="form-label">
@@ -141,6 +162,20 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Toggle future date section
+    const useFutureDateCheckbox = document.getElementById('use_future_date');
+    const futureDateSection = document.getElementById('future_date_section');
+    
+    function toggleFutureDate() {
+        if (useFutureDateCheckbox.checked) {
+            futureDateSection.style.display = 'block';
+        } else {
+            futureDateSection.style.display = 'none';
+        }
+    }
+    
+    useFutureDateCheckbox.addEventListener('change', toggleFutureDate);
+    
     // Handle deposits receipt requirement changes
     const depositsSelect = document.getElementById('receipt_required_deposits');
     const depositsThresholdSection = document.getElementById('deposits_threshold_section');

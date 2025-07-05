@@ -50,7 +50,12 @@
                     <option value="">All Categories</option>
                     {% for cat in categories %}
                     <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>
-                        {{ cat }}
+                        {% if '/' in cat %}
+                            {% set parts = cat.split('/', 1) %}
+                            {{ parts[0] }} → {{ parts[1] }}
+                        {% else %}
+                            {{ cat }}
+                        {% endif %}
                     </option>
                     {% endfor %}
                 </select>
@@ -160,13 +165,20 @@
     <div class="col-md-4">
         <div class="card">
             <div class="card-body">
-                <h6>Transaction Status</h6>
-                <div class="form-check">
+                <h6>Chart Options</h6>
+                <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="includePending" checked>
                     <label class="form-check-label" for="includePending">
                         Include Pending Transactions
                     </label>
                     <div class="form-text">Include pending/processing transactions in reports</div>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="showSubcategories">
+                    <label class="form-check-label" for="showSubcategories">
+                        Show Sub-categories
+                    </label>
+                    <div class="form-text">Show detailed sub-categories instead of main categories only</div>
                 </div>
             </div>
         </div>
@@ -183,9 +195,9 @@
             </h5>
         </div>
         <div class="card-body">
-            {% if table_data %}
+            {% if hierarchical_data %}
             <div class="table-responsive">
-                <table class="table table-striped table-hover">
+                <table class="table table-striped table-hover" id="categoryTable">
                     <thead class="table-dark">
                         <tr>
                             <th>Category</th>
@@ -195,34 +207,60 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for row in table_data %}
-                        <tr>
+                        {% for main_cat in hierarchical_data %}
+                        {% set outer_loop = loop %}
+                        <!-- Main Category Row -->
+                        <tr class="main-category-row" style="cursor: pointer;" onclick="toggleSubcategories('{{ loop.index }}')">
                             <td>
-                                <span class="fw-medium">{{ row.category }}</span>
+                                <i class="fas fa-chevron-right me-2 expand-icon" id="icon-{{ loop.index }}"></i>
+                                <span class="fw-bold">{{ main_cat.main_category }}</span>
+                                {% if main_cat.subcategories %}
+                                <small class="text-muted ms-2">({{ main_cat.subcategories|length }} sub-categories)</small>
+                                {% endif %}
                             </td>
-                            <td class="text-end {% if row.total_amount < 0 %}text-danger{% else %}text-success{% endif %}">
-                                <strong>${{ "{:,.2f}".format(row.total_amount) }}</strong>
+                            <td class="text-end {% if main_cat.total_amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                <strong>${{ "{:,.2f}".format(main_cat.total_amount) }}</strong>
                             </td>
                             <td class="text-center">
-                                <span class="badge bg-primary">{{ row.transaction_count }}</span>
+                                <span class="badge bg-primary">{{ main_cat.transaction_count }}</span>
                             </td>
-                            <td class="text-end {% if row.average_amount < 0 %}text-danger{% else %}text-success{% endif %}">
-                                ${{ "{:,.2f}".format(row.average_amount) }}
+                            <td class="text-end {% if main_cat.average_amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                <strong>${{ "{:,.2f}".format(main_cat.average_amount) }}</strong>
                             </td>
                         </tr>
+                        
+                        <!-- Sub-Category Rows (initially hidden) -->
+                        {% for subcat in main_cat.subcategories %}
+                        <tr class="subcategory-row subcategory-{{ outer_loop.index }}" style="display: none;">
+                            <td class="ps-5">
+                                <i class="fas fa-angle-right me-2 text-muted"></i>
+                                <span>{{ subcat.subcategory }}</span>
+                                <small class="text-muted d-block ps-4">{{ subcat.full_category }}</small>
+                            </td>
+                            <td class="text-end {% if subcat.total_amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                ${{ "{:,.2f}".format(subcat.total_amount) }}
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-secondary">{{ subcat.transaction_count }}</span>
+                            </td>
+                            <td class="text-end {% if subcat.average_amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                ${{ "{:,.2f}".format(subcat.average_amount) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
                         {% endfor %}
                     </tbody>
                     <tfoot class="table-secondary">
                         <tr>
                             <th>Total</th>
                             <th class="text-end">
-                                {% set total_amount = table_data | sum(attribute='total_amount') %}
+                                {% set total_amount = hierarchical_data | sum(attribute='total_amount') %}
                                 <strong class="{% if total_amount < 0 %}text-danger{% else %}text-success{% endif %}">
                                     ${{ "{:,.2f}".format(total_amount) }}
                                 </strong>
                             </th>
                             <th class="text-center">
-                                {% set total_transactions = table_data | sum(attribute='transaction_count') %}
+                                {% set total_transactions = hierarchical_data | sum(attribute='transaction_count') %}
                                 <strong>{{ total_transactions }}</strong>
                             </th>
                             <th class="text-end">
@@ -353,10 +391,11 @@ function loadBudgetChart(months = 12) {
     document.getElementById('budgetChart').style.display = 'none';
     
     const includePending = document.getElementById('includePending').checked;
+    const showSubcategories = document.getElementById('showSubcategories').checked;
     const mercuryAccountId = document.getElementById('mercury_account_id').value;
     const monthFilter = document.getElementById('month').value;
     
-    let url = `/api/budget_data?months=${months}&include_pending=${includePending}`;
+    let url = `/api/budget_data?months=${months}&include_pending=${includePending}&show_subcategories=${showSubcategories}`;
     if (mercuryAccountId) {
         url += `&mercury_account_id=${mercuryAccountId}`;
     }
@@ -376,6 +415,10 @@ function loadBudgetChart(months = 12) {
                 budgetChart.destroy();
             }
             
+            const chartTitle = showSubcategories ? 
+                'Monthly Spending by Sub-category' : 
+                'Monthly Spending by Category';
+            
             budgetChart = new Chart(ctx, {
                 type: 'line',
                 data: data,
@@ -385,7 +428,7 @@ function loadBudgetChart(months = 12) {
                     plugins: {
                         title: {
                             display: true,
-                            text: 'Monthly Spending by Category'
+                            text: chartTitle
                         },
                         legend: {
                             position: 'bottom'
@@ -427,10 +470,11 @@ function loadExpenseChart(months = 3) {
     document.getElementById('expenseChart').style.display = 'none';
     
     const includePending = document.getElementById('includePending').checked;
+    const showSubcategories = document.getElementById('showSubcategories').checked;
     const mercuryAccountId = document.getElementById('mercury_account_id').value;
     const monthFilter = document.getElementById('month').value;
     
-    let url = `/api/expense_breakdown?months=${months}&include_pending=${includePending}`;
+    let url = `/api/expense_breakdown?months=${months}&include_pending=${includePending}&show_subcategories=${showSubcategories}`;
     if (mercuryAccountId) {
         url += `&mercury_account_id=${mercuryAccountId}`;
     }
@@ -450,6 +494,10 @@ function loadExpenseChart(months = 3) {
                 expenseChart.destroy();
             }
             
+            const chartTitle = showSubcategories ? 
+                'Expense Distribution by Sub-category' : 
+                'Expense Distribution by Category';
+            
             expenseChart = new Chart(ctx, {
                 type: 'doughnut',
                 data: data,
@@ -459,7 +507,7 @@ function loadExpenseChart(months = 3) {
                     plugins: {
                         title: {
                             display: true,
-                            text: 'Expense Distribution'
+                            text: chartTitle
                         },
                         legend: {
                             position: 'bottom'
@@ -486,6 +534,30 @@ function loadExpenseChart(months = 3) {
         });
 }
 
+// Toggle subcategories visibility
+function toggleSubcategories(categoryIndex) {
+    const icon = document.getElementById(`icon-${categoryIndex}`);
+    const subcategoryRows = document.querySelectorAll(`.subcategory-${categoryIndex}`);
+    
+    let isExpanded = icon.classList.contains('fa-chevron-down');
+    
+    if (isExpanded) {
+        // Collapse
+        icon.classList.remove('fa-chevron-down');
+        icon.classList.add('fa-chevron-right');
+        subcategoryRows.forEach(row => {
+            row.style.display = 'none';
+        });
+    } else {
+        // Expand
+        icon.classList.remove('fa-chevron-right');
+        icon.classList.add('fa-chevron-down');
+        subcategoryRows.forEach(row => {
+            row.style.display = 'table-row';
+        });
+    }
+}
+
 // Event listeners for period changes
 document.querySelectorAll('input[name="budgetPeriod"]').forEach(radio => {
     radio.addEventListener('change', function() {
@@ -505,6 +577,14 @@ document.querySelectorAll('input[name="expensePeriod"]').forEach(radio => {
 
 // Event listener for pending transactions checkbox
 document.getElementById('includePending').addEventListener('change', function() {
+    const budgetPeriod = document.querySelector('input[name="budgetPeriod"]:checked').value;
+    const expensePeriod = document.querySelector('input[name="expensePeriod"]:checked').value;
+    loadBudgetChart(parseInt(budgetPeriod));
+    loadExpenseChart(parseInt(expensePeriod));
+});
+
+// Event listener for subcategories checkbox
+document.getElementById('showSubcategories').addEventListener('change', function() {
     const budgetPeriod = document.querySelector('input[name="budgetPeriod"]:checked').value;
     const expensePeriod = document.querySelector('input[name="expensePeriod"]:checked').value;
     loadBudgetChart(parseInt(budgetPeriod));

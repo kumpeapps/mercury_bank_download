@@ -16,13 +16,13 @@ else
     fi
     
     # Check if sync service is running
-    if ! docker-compose ps mercury-sync | grep -q "Up"; then
+    if ! docker compose ps mercury-sync | grep -q "Up"; then
         echo "Starting Mercury sync service..."
-        docker-compose up -d mercury-sync
+        docker compose up -d mercury-sync
         echo "Waiting for service to be ready..."
         sleep 5
     fi
     
     echo "Launching CLI GUI..."
-    exec docker-compose exec mercury-sync python cli_gui.py
+    exec docker compose exec mercury-sync python cli_gui.py
 fi
