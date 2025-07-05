@@ -35,6 +35,11 @@ The CLI GUI automatically determines admin user context for logging and informat
 - Edit existing account settings
 - Enable/disable accounts
 - Test API connectivity
+- **Manage user access to Mercury accounts** *(New in v2.0.0)*
+  - View users with access to each account
+  - Add user access to Mercury accounts
+  - Remove user access from Mercury accounts
+  - Safety checks to prevent inaccessible accounts
 
 ### 👥 **User Management**
 - List users with their assigned roles
@@ -122,6 +127,19 @@ Most administrative functions require authentication:
 2. Choose `2. Add user`
 3. Enter user details and assign roles
 4. User can immediately log in to web interface
+
+### Managing User Access to Mercury Accounts
+1. Select `2. Manage Mercury Accounts`
+2. Choose `6. Manage user access`
+3. Select a Mercury account by ID
+4. Choose either `1. Add user access` or `2. Remove user access`
+5. Follow the prompts to add or remove specific users
+
+### Checking Mercury Account User Access
+1. Select `2. Manage Mercury Accounts`
+2. Choose `1. List Mercury accounts`
+3. Enter the account ID to view details
+4. The "Associated Users" section shows all users with access
 
 ### Checking System Health
 1. Select `1. System Status`

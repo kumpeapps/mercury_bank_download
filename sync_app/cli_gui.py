@@ -94,6 +94,51 @@ class MercurySyncCLI:
         """Get password input with colored prompt."""
         return getpass.getpass(f"{CLIColors.OKCYAN}{prompt}{CLIColors.ENDC}")
 
+    def _select_user(self) -> Optional[User]:
+        """Display list of users and allow selection of one."""
+        try:
+            from sqlalchemy.orm import joinedload
+
+            users = self.session.query(User).options(joinedload(User.roles)).all()
+
+            if not users:
+                self._print_error("No users found in the database")
+                return None
+
+            print(f"\n{CLIColors.BOLD}Select User:{CLIColors.ENDC}")
+            print(f"{'ID':<4} {'Username':<20} {'Email':<30} {'Roles'}")
+            print("-" * 80)
+
+            for user in users:
+                roles = [role.name for role in user.roles]
+                roles_str = ", ".join(roles) if roles else "None"
+                print(
+                    f"{user.id:<4} {user.username[:19]:<20} {user.email[:29]:<30} {roles_str}"
+                )
+
+            while True:
+                try:
+                    user_input = self._get_input(
+                        "\nEnter user ID (or 'cancel' to cancel): "
+                    )
+                    if user_input.lower() == "cancel":
+                        return None
+
+                    user_id = int(user_input)
+                    selected_user = next((u for u in users if u.id == user_id), None)
+
+                    if selected_user:
+                        return selected_user
+                    else:
+                        self._print_error("Invalid user ID. Please try again.")
+
+                except ValueError:
+                    self._print_error("Please enter a valid user ID or 'cancel'.")
+
+        except Exception as e:
+            self._print_error(f"Error selecting user: {str(e)}")
+            return None
+
     def _pause(self):
         """Pause and wait for user input."""
         input(f"\n{CLIColors.OKBLUE}Press Enter to continue...{CLIColors.ENDC}")
@@ -172,7 +217,7 @@ class MercurySyncCLI:
                 admin_users = (
                     self.session.query(User)
                     .join(User.roles)
-                    .filter(Role.name == 'admin')
+                    .filter(Role.name == "admin")
                     .all()
                 )
                 if admin_users:
@@ -262,9 +307,10 @@ class MercurySyncCLI:
             print("3. Edit Mercury account")
             print("4. Enable/Disable account")
             print("5. Test API connection")
-            print("6. Back to main menu")
+            print("6. Manage user access")
+            print("7. Back to main menu")
 
-            choice = self._get_input("\nSelect option (1-6): ")
+            choice = self._get_input("\nSelect option (1-7): ")
 
             if choice == "1":
                 self._list_mercury_accounts()
@@ -277,11 +323,13 @@ class MercurySyncCLI:
             elif choice == "5":
                 self._test_api_connection()
             elif choice == "6":
+                self._manage_mercury_account_users()
+            elif choice == "7":
                 break
             else:
                 self._print_error("Invalid choice")
 
-            if choice != "6":
+            if choice != "7":
                 self._pause()
 
     def _list_mercury_accounts(self):
@@ -313,14 +361,125 @@ class MercurySyncCLI:
                     f"{account.id:<4} {account.name[:24]:<25} {status:<10} {sandbox:<8} {user_count:<6} {last_sync}"
                 )
 
+            # Option to view account details
+            while True:
+                detail_input = self._get_input(
+                    "\nEnter account ID to view details (or press Enter to skip): "
+                )
+                if not detail_input:
+                    break
+
+                try:
+                    account_id = int(detail_input)
+                    account = next((a for a in accounts if a.id == account_id), None)
+
+                    if account:
+                        self._view_mercury_account_details(account)
+                        break
+                    else:
+                        self._print_error("Invalid account ID")
+                except ValueError:
+                    self._print_error("Please enter a valid ID or press Enter to skip")
+
         except Exception as e:
             self._print_error(f"Error listing Mercury accounts: {str(e)}")
+
+    def _view_mercury_account_details(self, account: MercuryAccount):
+        """View detailed information about a Mercury account."""
+        try:
+            self._print_header(f"Mercury Account: {account.name}")
+
+            # Account information
+            print(f"{CLIColors.BOLD}Account Information:{CLIColors.ENDC}")
+            print(f"ID:              {account.id}")
+            print(f"Name:            {account.name}")
+            print(f"Status:          {'Active' if account.is_active else 'Inactive'}")
+            print(f"Sync Enabled:    {'Yes' if account.sync_enabled else 'No'}")
+            print(f"Sandbox Mode:    {'Yes' if account.sandbox_mode else 'No'}")
+            print(f"Description:     {account.description or 'None'}")
+            print(
+                f"Created:         {account.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            print(
+                f"Last Sync:       {account.last_sync_at.strftime('%Y-%m-%d %H:%M:%S') if account.last_sync_at else 'Never'}"
+            )
+            print(f"Last Sync Status: {account.last_sync_status or 'N/A'}")
+
+            # Associated users
+            print(f"\n{CLIColors.BOLD}Associated Users:{CLIColors.ENDC}")
+            if not account.users:
+                print(
+                    f"{CLIColors.WARNING}No users have access to this account{CLIColors.ENDC}"
+                )
+            else:
+                print(f"{'ID':<4} {'Username':<20} {'Email':<30} {'Roles'}")
+                print("-" * 80)
+                for user in account.users:
+                    roles = [role.name for role in user.roles]
+                    roles_str = ", ".join(roles) if roles else "None"
+                    print(
+                        f"{user.id:<4} {user.username[:19]:<20} {user.email[:29]:<30} {roles_str}"
+                    )
+
+            # Mercury bank accounts
+            print(f"\n{CLIColors.BOLD}Bank Accounts:{CLIColors.ENDC}")
+            bank_accounts = (
+                self.session.query(Account)
+                .filter(Account.mercury_account_id == account.id)
+                .all()
+            )
+            if not bank_accounts:
+                print(
+                    f"{CLIColors.WARNING}No bank accounts synchronized yet{CLIColors.ENDC}"
+                )
+            else:
+                print(
+                    f"{'ID':<4} {'Name':<25} {'Account Number':<20} {'Balance':<15} {'Currency':<8}"
+                )
+                print("-" * 80)
+                for bank_account in bank_accounts:
+                    # Mask account number for security
+                    masked_account = (
+                        f"{'*' * (len(bank_account.account_number) - 4)}{bank_account.account_number[-4:]}"
+                        if bank_account.account_number
+                        else "N/A"
+                    )
+                    balance = (
+                        f"{bank_account.current_balance:.2f}"
+                        if bank_account.current_balance is not None
+                        else "N/A"
+                    )
+                    print(
+                        f"{bank_account.id:<4} {bank_account.name[:24]:<25} {masked_account:<20} {balance:<15} {bank_account.currency_code or 'USD':<8}"
+                    )
+
+            # Get transaction counts
+            transaction_count = (
+                self.session.query(Transaction)
+                .join(Account)
+                .filter(Account.mercury_account_id == account.id)
+                .count()
+            )
+            print(f"\nTotal transactions: {transaction_count}")
+
+        except Exception as e:
+            self._print_error(f"Error viewing account details: {str(e)}")
 
     def _add_mercury_account(self):
         """Add a new Mercury account."""
         print(f"\n{CLIColors.BOLD}Add Mercury Account{CLIColors.ENDC}")
 
         try:
+            # First, select which user to add the account to
+            selected_user = self._select_user()
+            if not selected_user:
+                self._print_info("Account creation cancelled")
+                return
+
+            print(
+                f"\n{CLIColors.OKGREEN}Adding Mercury account for user: {selected_user.username}{CLIColors.ENDC}"
+            )
+
             name = self._get_input("Account name: ")
             if not name:
                 self._print_error("Account name is required")
@@ -344,10 +503,15 @@ class MercurySyncCLI:
                 sync_enabled=True,
             )
 
+            # Associate the Mercury account with the selected user
+            mercury_account.users.append(selected_user)
+
             self.session.add(mercury_account)
             self.session.commit()
 
-            self._print_success(f"Mercury account '{name}' added successfully")
+            self._print_success(
+                f"Mercury account '{name}' added successfully for user '{selected_user.username}'"
+            )
 
         except Exception as e:
             self.session.rollback()
@@ -476,6 +640,185 @@ class MercurySyncCLI:
             self._print_error("Invalid account ID")
         except Exception as e:
             self._print_error(f"Error testing API connection: {str(e)}")
+
+    def _manage_mercury_account_users(self):
+        """Manage user access to Mercury accounts."""
+        try:
+            # First, select which account to manage
+            mercury_account = self._select_mercury_account()
+            if not mercury_account:
+                return
+
+            while True:
+                self._print_header(f"Manage Users for '{mercury_account.name}'")
+
+                # Display current users
+                print(f"\n{CLIColors.BOLD}Current Users:{CLIColors.ENDC}")
+                if not mercury_account.users:
+                    print(
+                        f"{CLIColors.WARNING}No users have access to this account{CLIColors.ENDC}"
+                    )
+                else:
+                    print(f"{'ID':<4} {'Username':<20} {'Email':<30}")
+                    print("-" * 60)
+                    for user in mercury_account.users:
+                        print(
+                            f"{user.id:<4} {user.username[:19]:<20} {user.email[:29]:<30}"
+                        )
+
+                print("\n1. Add user access")
+                print("2. Remove user access")
+                print("3. Back to Mercury account management")
+
+                subchoice = self._get_input("\nSelect option (1-3): ")
+
+                if subchoice == "1":
+                    self._add_user_to_mercury_account(mercury_account)
+                elif subchoice == "2":
+                    self._remove_user_from_mercury_account(mercury_account)
+                elif subchoice == "3":
+                    break
+                else:
+                    self._print_error("Invalid choice")
+
+        except Exception as e:
+            self.session.rollback()
+            self._print_error(f"Error managing user access: {str(e)}")
+
+    def _select_mercury_account(self) -> Optional[MercuryAccount]:
+        """Display list of Mercury accounts and allow selection of one."""
+        try:
+            self._list_mercury_accounts()
+
+            while True:
+                try:
+                    account_input = self._get_input(
+                        "\nEnter account ID (or 'cancel' to cancel): "
+                    )
+                    if account_input.lower() == "cancel":
+                        return None
+
+                    account_id = int(account_input)
+                    account = (
+                        self.session.query(MercuryAccount)
+                        .filter(MercuryAccount.id == account_id)
+                        .first()
+                    )
+
+                    if account:
+                        return account
+                    else:
+                        self._print_error("Invalid account ID. Please try again.")
+
+                except ValueError:
+                    self._print_error("Please enter a valid account ID or 'cancel'.")
+
+        except Exception as e:
+            self._print_error(f"Error selecting account: {str(e)}")
+            return None
+
+    def _add_user_to_mercury_account(self, mercury_account: MercuryAccount):
+        """Add a user to a Mercury account."""
+        try:
+            # First, get users who don't already have access
+            current_user_ids = [user.id for user in mercury_account.users]
+            available_users = (
+                self.session.query(User).filter(User.id.notin_(current_user_ids)).all()
+            )
+
+            if not available_users:
+                self._print_warning("All users already have access to this account")
+                return
+
+            print(f"\n{CLIColors.BOLD}Available Users:{CLIColors.ENDC}")
+            print(f"{'ID':<4} {'Username':<20} {'Email':<30}")
+            print("-" * 60)
+            for user in available_users:
+                print(f"{user.id:<4} {user.username[:19]:<20} {user.email[:29]:<30}")
+
+            while True:
+                try:
+                    user_input = self._get_input(
+                        "\nEnter user ID to add (or 'cancel' to cancel): "
+                    )
+                    if user_input.lower() == "cancel":
+                        return
+
+                    user_id = int(user_input)
+                    selected_user = next(
+                        (u for u in available_users if u.id == user_id), None
+                    )
+
+                    if selected_user:
+                        # Add user to Mercury account
+                        mercury_account.users.append(selected_user)
+                        self.session.commit()
+                        self._print_success(
+                            f"User '{selected_user.username}' added to '{mercury_account.name}'"
+                        )
+                        return
+                    else:
+                        self._print_error("Invalid user ID. Please try again.")
+
+                except ValueError:
+                    self._print_error("Please enter a valid user ID or 'cancel'.")
+
+        except Exception as e:
+            self.session.rollback()
+            self._print_error(f"Error adding user to account: {str(e)}")
+
+    def _remove_user_from_mercury_account(self, mercury_account: MercuryAccount):
+        """Remove a user from a Mercury account."""
+        try:
+            if not mercury_account.users:
+                self._print_warning("No users have access to this account")
+                return
+
+            print(f"\n{CLIColors.BOLD}Current Users:{CLIColors.ENDC}")
+            print(f"{'ID':<4} {'Username':<20} {'Email':<30}")
+            print("-" * 60)
+            for user in mercury_account.users:
+                print(f"{user.id:<4} {user.username[:19]:<20} {user.email[:29]:<30}")
+
+            while True:
+                try:
+                    user_input = self._get_input(
+                        "\nEnter user ID to remove (or 'cancel' to cancel): "
+                    )
+                    if user_input.lower() == "cancel":
+                        return
+
+                    user_id = int(user_input)
+                    selected_user = next(
+                        (u for u in mercury_account.users if u.id == user_id), None
+                    )
+
+                    if selected_user:
+                        # Check if this is the last user
+                        if len(mercury_account.users) <= 1:
+                            confirm = self._get_input(
+                                f"{CLIColors.WARNING}This is the last user with access. Removing will leave the account inaccessible. Continue? (y/n): {CLIColors.ENDC}"
+                            )
+                            if confirm.lower() != "y":
+                                self._print_info("Operation cancelled")
+                                return
+
+                        # Remove user from Mercury account
+                        mercury_account.users.remove(selected_user)
+                        self.session.commit()
+                        self._print_success(
+                            f"User '{selected_user.username}' removed from '{mercury_account.name}'"
+                        )
+                        return
+                    else:
+                        self._print_error("Invalid user ID. Please try again.")
+
+                except ValueError:
+                    self._print_error("Please enter a valid user ID or 'cancel'.")
+
+        except Exception as e:
+            self.session.rollback()
+            self._print_error(f"Error removing user from account: {str(e)}")
 
     def _manage_users(self):
         """Manage users and roles."""
@@ -873,14 +1216,14 @@ class MercurySyncCLI:
             from sqlalchemy import create_engine
             import os
 
-            database_url = os.environ.get('DATABASE_URL')
+            database_url = os.environ.get("DATABASE_URL")
             if not database_url:
                 self._print_error("DATABASE_URL environment variable not set")
                 return
 
             engine = create_engine(database_url)
             Base.metadata.create_all(engine)
-            
+
             self._print_success("Database schema created/updated successfully")
 
         except Exception as e:

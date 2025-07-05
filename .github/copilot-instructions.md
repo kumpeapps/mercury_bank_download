@@ -49,6 +49,13 @@ This is a Mercury Bank Integration Platform consisting of two main components:
    - Both apps share the same database schema
    - Changes to one model directory should be replicated in the other
 
+7. **Command-Line Interface**
+   - The CLI GUI provides management capabilities without requiring the web interface
+   - CLI functionality is defined in `sync_app/cli_gui.py` 
+   - Access via `./dev.sh cli-gui` or `sync_app/launch_cli.sh`
+   - Supports Mercury account management, user management, and database operations
+   - User access to Mercury accounts can be managed through the CLI
+
 ## Common Tasks
 
 - **Add New Model**: Define in both sync_app/models/ and web_app/models/
