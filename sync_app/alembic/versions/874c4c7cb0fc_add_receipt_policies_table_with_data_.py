@@ -7,6 +7,7 @@ Create Date: 2025-07-04 20:38:25.632193
 """
 from typing import Sequence, Union
 from datetime import datetime
+import logging
 
 from alembic import op
 import sqlalchemy as sa
@@ -19,6 +20,10 @@ revision: str = '874c4c7cb0fc'
 down_revision: Union[str, Sequence[str], None] = '3af8894c0ebc'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
+
+# Configure logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('alembic.migration')
 
 
 def upgrade() -> None:
@@ -80,13 +85,15 @@ def upgrade() -> None:
         receipt_required_charges = sa.Column(sa.String(20))
         receipt_threshold_charges = sa.Column(sa.Float, nullable=True)
     
-    # Migration start date - January 1, 2025
-    start_date = datetime(2025, 1, 1)
+    # Migration start date - use current date 
+    start_date = datetime.now()
     
     # Get all accounts
     accounts = session.query(Account).all()
+    logger.info(f"Found {len(accounts)} accounts to create receipt policies for")
     
     # For each account, create a receipt policy with the current settings
+    policy_count = 0
     for account in accounts:
         policy = ReceiptPolicy(
             account_id=account.id,
@@ -98,9 +105,13 @@ def upgrade() -> None:
             receipt_threshold_charges=account.receipt_threshold_charges
         )
         session.add(policy)
+        policy_count += 1
     
-    # Commit the changes
+    # Explicitly commit the changes to ensure they're saved
+    session.flush()
     session.commit()
+    
+    logger.info(f"Created {policy_count} receipt policies during migration")
 
 
 def downgrade() -> None:

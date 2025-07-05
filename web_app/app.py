@@ -501,7 +501,7 @@ def export_transactions(transactions, format_type, accounts):
         receipt_status = ""
         if account:
             status = account.get_receipt_status_for_transaction(
-                transaction.amount, transaction.number_of_attachments > 0
+                transaction.amount, transaction.number_of_attachments > 0, transaction.posted_at
             )
             receipt_status_map = {
                 "required_present": "Required (Present)",
@@ -2945,20 +2945,16 @@ def edit_account(account_id):
         )
 
         if request.method == "POST":
-            # Handle current separate deposit receipt requirements
-            account.receipt_required_deposits = request.form.get(
-                "receipt_required_deposits", "none"
-            )
-
-            threshold_deposits_str = request.form.get(
-                "receipt_threshold_deposits", ""
-            ).strip()
-            if (
-                account.receipt_required_deposits == "threshold"
-                and threshold_deposits_str
-            ):
+            # Get receipt requirement settings from form
+            receipt_required_deposits = request.form.get("receipt_required_deposits", "none")
+            receipt_required_charges = request.form.get("receipt_required_charges", "none")
+            
+            # Parse threshold values
+            threshold_deposits_str = request.form.get("receipt_threshold_deposits", "").strip()
+            threshold_deposits = None
+            if receipt_required_deposits == "threshold" and threshold_deposits_str:
                 try:
-                    account.receipt_threshold_deposits = float(threshold_deposits_str)
+                    threshold_deposits = float(threshold_deposits_str)
                 except ValueError:
                     flash("Invalid deposit receipt threshold amount.", "error")
                     return render_template(
@@ -2966,23 +2962,12 @@ def edit_account(account_id):
                         account=account,
                         mercury_account=mercury_account,
                     )
-            else:
-                account.receipt_threshold_deposits = None
 
-            # Handle current separate charge receipt requirements
-            account.receipt_required_charges = request.form.get(
-                "receipt_required_charges", "none"
-            )
-
-            threshold_charges_str = request.form.get(
-                "receipt_threshold_charges", ""
-            ).strip()
-            if (
-                account.receipt_required_charges == "threshold"
-                and threshold_charges_str
-            ):
+            threshold_charges_str = request.form.get("receipt_threshold_charges", "").strip()
+            threshold_charges = None
+            if receipt_required_charges == "threshold" and threshold_charges_str:
                 try:
-                    account.receipt_threshold_charges = float(threshold_charges_str)
+                    threshold_charges = float(threshold_charges_str)
                 except ValueError:
                     flash("Invalid charge receipt threshold amount.", "error")
                     return render_template(
@@ -2990,14 +2975,20 @@ def edit_account(account_id):
                         account=account,
                         mercury_account=mercury_account,
                     )
-            else:
-                account.receipt_threshold_charges = None
+            
+            # Update receipt policy - this creates a historical record
+            account.update_receipt_policy(
+                receipt_required_deposits=receipt_required_deposits,
+                receipt_threshold_deposits=threshold_deposits,
+                receipt_required_charges=receipt_required_charges,
+                receipt_threshold_charges=threshold_charges
+            )
 
             # Handle exclude from reports setting
             account.exclude_from_reports = "exclude_from_reports" in request.form
 
             db_session.commit()
-            flash("Account updated successfully!", "success")
+            flash("Account updated successfully and receipt policy history updated!", "success")
             return redirect(url_for("accounts"))
 
         return render_template(

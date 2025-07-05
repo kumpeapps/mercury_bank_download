@@ -281,7 +281,7 @@
                         <td class="text-center">
                             {% set account = accounts | selectattr('id', 'equalto', transaction.account_id) | first %}
                             {% if account %}
-                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, transaction.number_of_attachments > 0) %}
+                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, transaction.number_of_attachments > 0, transaction.posted_at) %}
                                 {% if receipt_status == 'required_present' %}
                                     <i class="fas fa-receipt text-success attachment-icon" 
                                        style="cursor: pointer;" 
@@ -337,7 +337,7 @@
                             {% endif %}
                             {% set account = accounts | selectattr('id', 'equalto', transaction.account_id) | first %}
                             {% if account %}
-                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, transaction.number_of_attachments > 0) %}
+                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, transaction.number_of_attachments > 0, transaction.posted_at) %}
                                 {% if receipt_status == 'required_present' %}
                                     <i class="fas fa-receipt text-success attachment-icon ms-2" 
                                        style="cursor: pointer;" 
