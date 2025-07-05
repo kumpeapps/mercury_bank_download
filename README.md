@@ -748,20 +748,15 @@ docker-compose logs mercury-sync | grep "SQLAlchemy"
 
 ## 🆕 What's New
 
-### Version 2.0+ Features
+### Version 2.0.1+ Features
 
 - ✅ **Multi-Account Architecture** - Manage multiple Mercury Bank accounts
 - ✅ **User Management System** - Role-based access control
 - ✅ **Sandbox Environment** - Built-in testing support
 - ✅ **Enhanced Docker Support** - Multiple image variants
 - ✅ **Improved Error Handling** - Better resilience and recovery
-- ✅ **Health Monitoring** - Comprehensive status reporting
-- ✅ **Migration Tools** - Easy upgrade from v1.x
-
-### Roadmap
-
-- 🔄 **Real-time Webhooks** - Instant transaction notifications
-- 📊 **Analytics Dashboard** - Transaction insights and reporting
+- ✅ **Analytics Dashboard** - Interactive transaction insights and category-based reporting
+- ✅ **Enhanced Chart Controls** - Dynamic category/sub-category toggle views
 - 🔐 **Enhanced Security** - OAuth2 and API key rotation
 - 📱 **Mobile API** - REST API for mobile applications
 - 🚀 **Performance Optimization** - Parallel sync processing

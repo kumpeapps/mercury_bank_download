@@ -3,7 +3,7 @@
 ## Project Overview
 This is a Mercury Bank Integration Platform consisting of two main components:
 1. **Sync Service** (`sync_app/`) - Automated data synchronization from Mercury Bank API
-2. **Web Interface** (`web_app/`) - User-friendly web dashboard for data management and reporting
+2. **Web Interface** (`web_app/`) - User-friendly web dashboard for data management and reporting with interactive charts
 
 ## Key Technologies
 - **Python**: Primary programming language
