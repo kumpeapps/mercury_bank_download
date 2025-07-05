@@ -700,7 +700,7 @@ def get_reports_table_data(
     month_filter=None,
     account_id=None,
     category=None,
-    status_filter=None,
+    expanded_status_filter=None,
 ):
     """Get aggregated category data for reports table view"""
     # Get user's accessible Mercury accounts
@@ -748,8 +748,8 @@ def get_reports_table_data(
         query = query.filter(Transaction.note.ilike(f"%{category}%"))
 
     # Add status filter
-    if status_filter:
-        query = query.filter(Transaction.status.in_(status_filter))
+    if expanded_status_filter:
+        query = query.filter(Transaction.status.in_(expanded_status_filter))
 
     # Add month filter
     if month_filter:
@@ -1412,7 +1412,17 @@ def transactions():
 
     # Default to sent and pending if no status filter specified
     if not status_filter:
-        status_filter = ["sent", "pending"]
+        status_filter = ["posted", "pending"]  # Use 'posted' as canonical form
+    
+    # Expand 'posted' to include both 'posted' and 'sent' for actual query
+    expanded_status_filter = []
+    for status in status_filter:
+        if status == 'posted':
+            expanded_status_filter.extend(['posted', 'sent'])
+        else:
+            expanded_status_filter.append(status)
+    # Remove duplicates
+    expanded_status_filter = list(set(expanded_status_filter))
 
     db_session = Session()
     try:
@@ -1500,8 +1510,8 @@ def transactions():
             query = query.filter(Transaction.note.ilike(f"%{category}%"))
 
         # Add status filter
-        if status_filter:
-            query = query.filter(Transaction.status.in_(status_filter))
+        if expanded_status_filter:
+            query = query.filter(Transaction.status.in_(expanded_status_filter))
 
         # Add month filter
         if month_filter:
@@ -1610,6 +1620,16 @@ def reports():
     if not status_filter:
         status_filter = ["sent", "pending"]
 
+    # Expand 'posted' to include both 'posted' and 'sent' for actual query
+    expanded_status_filter = []
+    for status in status_filter:
+        if status == 'posted':
+            expanded_status_filter.extend(['posted', 'sent'])
+        else:
+            expanded_status_filter.append(status)
+    # Remove duplicates
+    expanded_status_filter = list(set(expanded_status_filter))
+
     db_session = Session()
     try:
         # Get current user in session to avoid DetachedInstanceError
@@ -1709,9 +1729,17 @@ def reports():
                 .distinct()
                 .all()
             )
-            available_statuses = sorted(
-                [status[0] for status in status_results if status[0]]
-            )
+            raw_statuses = [status[0] for status in status_results if status[0]]
+            
+            # Consolidate sent and posted statuses (they are equivalent)
+            consolidated_statuses = set()
+            for status in raw_statuses:
+                if status in ['sent', 'posted']:
+                    consolidated_statuses.add('posted')  # Use 'posted' as the canonical form
+                else:
+                    consolidated_statuses.add(status)
+            
+            available_statuses = sorted(list(consolidated_statuses))
 
         # If table view or export is requested, get transaction data
         table_data = None
@@ -1725,7 +1753,7 @@ def reports():
                     month_filter,
                     account_id,
                     category,
-                    status_filter,
+                    expanded_status_filter,
                 )
                 return export_reports_data(table_data, export_format)
             else:
@@ -1736,7 +1764,7 @@ def reports():
                     month_filter,
                     account_id,
                     category,
-                    status_filter,
+                    expanded_status_filter,
                 )
 
         return render_template(
@@ -3250,7 +3278,7 @@ def get_hierarchical_reports_data(
     month_filter=None,
     account_id=None,
     category=None,
-    status_filter=None,
+    expanded_status_filter=None,
 ):
     """Get aggregated category data grouped by main categories with expandable sub-categories"""
     # Get user's accessible Mercury accounts
@@ -3289,8 +3317,8 @@ def get_hierarchical_reports_data(
         query = query.filter_by(account_id=account_id)
     if category:
         query = query.filter(Transaction.note.ilike(f"%{category}%"))
-    if status_filter:
-        query = query.filter(Transaction.status.in_(status_filter))
+    if expanded_status_filter:
+        query = query.filter(Transaction.status.in_(expanded_status_filter))
 
     # Add month filter
     if month_filter:

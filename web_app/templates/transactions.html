@@ -18,10 +18,7 @@
     transition: transform 0.2s ease-in-out;
 }
 
-/* Attachment image hover e                    html += `
-                        <div class="col-md-6 col-lg-4">
-                            <div class="card h-100 attachment-card">
-                                <div class="card-body text-center">`;ts */
+/* Attachment image hover effects */
 .attachment-image:hover {
     transform: scale(1.05);
     transition: transform 0.3s ease-in-out;
@@ -292,27 +289,29 @@
                         </td>
                         <td class="text-center">
                             {% set account = accounts | selectattr('id', 'equalto', transaction.account_id) | first %}
+                            {% set attachment_count = transaction.number_of_attachments or 0 %}
+                            {% set has_attachments = attachment_count > 0 %}
                             {% if account %}
-                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, transaction.number_of_attachments > 0, transaction.posted_at) %}
+                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, has_attachments, transaction.posted_at) %}
                                 {% if receipt_status == 'required_present' %}
                                     <i class="fas fa-receipt text-success attachment-icon" 
                                        style="cursor: pointer;" 
                                        data-transaction-id="{{ transaction.id }}"
-                                       title="Receipt required and present ({{ transaction.number_of_attachments }} attachment(s)) - Click to view"></i>
+                                       title="Receipt required and present ({{ attachment_count }} attachment(s)) - Click to view"></i>
                                 {% elif receipt_status == 'required_missing' %}
                                     <i class="fas fa-receipt text-danger" title="Receipt required but missing"></i>
                                 {% elif receipt_status == 'optional_present' %}
                                     <i class="fas fa-receipt text-info attachment-icon" 
                                        style="cursor: pointer;" 
                                        data-transaction-id="{{ transaction.id }}"
-                                       title="Receipt not required but present ({{ transaction.number_of_attachments }} attachment(s)) - Click to view"></i>
+                                       title="Receipt not required but present - Click to view"></i>
                                 {% endif %}
-                            {% elif transaction.number_of_attachments > 0 %}
+                            {% elif has_attachments %}
                                 {# Fallback for cases where account lookup fails #}
                                 <i class="fas fa-receipt text-primary attachment-icon" 
                                    style="cursor: pointer;" 
                                    data-transaction-id="{{ transaction.id }}"
-                                   title="{{ transaction.number_of_attachments }} attachment(s) - Click to view"></i>
+                                   title="{{ attachment_count }} attachment(s) - Click to view"></i>
                             {% endif %}
                         </td>
                     </tr>
@@ -348,8 +347,10 @@
                                 {% endif %}
                             {% endif %}
                             {% set account = accounts | selectattr('id', 'equalto', transaction.account_id) | first %}
+                            {% set attachment_count = transaction.number_of_attachments or 0 %}
+                            {% set has_attachments = attachment_count > 0 %}
                             {% if account %}
-                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, transaction.number_of_attachments > 0, transaction.posted_at) %}
+                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, has_attachments, transaction.posted_at) %}
                                 {% if receipt_status == 'required_present' %}
                                     <i class="fas fa-receipt text-success attachment-icon ms-2" 
                                        style="cursor: pointer;" 
@@ -357,13 +358,13 @@
                                        title="Receipt required and present - Click to view"></i>
                                 {% elif receipt_status == 'required_missing' %}
                                     <i class="fas fa-receipt text-danger ms-2" title="Receipt required but missing"></i>
-                                {% elif receipt_status == 'optional_present' %}
+                                {% elif receipt_status == "optional_present" %}
                                     <i class="fas fa-receipt text-info attachment-icon ms-2" 
                                        style="cursor: pointer;" 
                                        data-transaction-id="{{ transaction.id }}"
                                        title="Receipt attached - Click to view"></i>
                                 {% endif %}
-                            {% elif transaction.number_of_attachments > 0 %}
+                            {% elif (transaction.number_of_attachments or 0) > 0 %}
                                 <i class="fas fa-receipt text-primary attachment-icon ms-2" 
                                    style="cursor: pointer;" 
                                    data-transaction-id="{{ transaction.id }}"
