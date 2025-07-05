@@ -5,7 +5,13 @@ A comprehensive platform for Mercury Bank data synchronization and management, c
 1. **Sync Service** (`sync_app/`) - Automated data synchronization from Mercury Bank API
 2. **Web Interface** (`web_app/`) - User-friendly web dashboard for data management and reporting
 
-## 🎉 What's New in v2.0.0
+## 🎉 What's New in v2.0.1
+
+- **Enhanced Chart Controls** - Reports now show main categories by default with toggle for sub-categories
+- **Improved User Experience** - Cleaner, simplified chart views with drill-down capability
+- **Dynamic Chart Updates** - One-click toggle between category and sub-category views
+
+### Previous Updates (v2.0.0)
 
 - **Mercury Account User Management** - Add/remove user access to Mercury accounts through CLI
 - **Enhanced CLI Interface** - Improved command-line interface with additional management features
@@ -55,7 +61,7 @@ mercury_bank_download/
 - 🔐 **Granular Access Control** - Account-level permissions and restrictions
 - 📊 **Interactive Dashboard** - Real-time financial data visualization
 - 💰 **Transaction Management** - Search, filter, and categorize transactions
-- 📈 **Reporting & Analytics** - Charts, trends, and financial insights
+- 📈 **Reporting & Analytics** - Interactive charts with category/sub-category toggle, trends, and financial insights
 - 🎯 **Default Account Settings** - User-customizable default views
 - 📱 **Responsive Design** - Works on desktop, tablet, and mobile devices
 

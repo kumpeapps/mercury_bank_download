@@ -135,7 +135,12 @@
                     <option value="">All Categories</option>
                     {% for cat in categories %}
                     <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>
-                        {{ cat }}
+                        {% if '/' in cat %}
+                            {% set parts = cat.split('/', 1) %}
+                            {{ parts[0] }} → {{ parts[1] }}
+                        {% else %}
+                            {{ cat }}
+                        {% endif %}
                     </option>
                     {% endfor %}
                 </select>
@@ -245,7 +250,14 @@
                             {% endif %}
                         </td>
                         <td>
-                            <span class="badge bg-secondary">{{ transaction.note or 'Uncategorized' }}</span>
+                            {% set category_note = transaction.note or 'Uncategorized' %}
+                            {% if '/' in category_note and category_note != 'Uncategorized' %}
+                                {% set parts = category_note.split('/', 1) %}
+                                <span class="badge bg-secondary">{{ parts[0] }} → {{ parts[1] }}</span>
+                                <small class="text-muted d-block">{{ category_note }}</small>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ category_note }}</span>
+                            {% endif %}
                         </td>
                         <td>
                             {% if transaction.kind %}

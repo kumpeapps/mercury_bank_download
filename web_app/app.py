@@ -46,6 +46,100 @@ from models.transaction_attachment import TransactionAttachment
 from models.system_setting import SystemSetting
 from models.base import Base
 
+# Sub-category helper functions
+def parse_category(category_string):
+    """
+    Parse a category string into main category and sub-category.
+    
+    Args:
+        category_string (str): Category string, potentially with sub-category (e.g., "Office/Supplies")
+    
+    Returns:
+        tuple: (main_category, sub_category) or (category, None) if no sub-category
+    """
+    if not category_string:
+        return (None, None)
+    
+    if '/' in category_string:
+        parts = category_string.split('/', 1)  # Split on first '/' only
+        return (parts[0].strip(), parts[1].strip())
+    else:
+        return (category_string.strip(), None)
+
+def get_unique_categories_and_subcategories(db_session, account_ids):
+    """
+    Get all unique categories and sub-categories from transactions.
+    
+    Returns:
+        dict: {
+            'categories': ['Office', 'Travel', ...],
+            'subcategories': {
+                'Office': ['Supplies', 'Equipment'],
+                'Travel': ['Flights', 'Hotels']
+            },
+            'all_combinations': ['Office', 'Office/Supplies', 'Travel', ...]
+        }
+    """
+    if not account_ids:
+        return {'categories': [], 'subcategories': {}, 'all_combinations': []}
+    
+    # Get all category strings from transactions
+    category_results = (
+        db_session.query(Transaction.note)
+        .filter(Transaction.account_id.in_(account_ids))
+        .filter(Transaction.note.isnot(None))
+        .distinct()
+        .all()
+    )
+    
+    category_strings = [cat[0] for cat in category_results if cat[0]]
+    
+    categories = set()
+    subcategories = defaultdict(set)
+    all_combinations = set()
+    
+    for category_string in category_strings:
+        main_cat, sub_cat = parse_category(category_string)
+        if main_cat:
+            categories.add(main_cat)
+            all_combinations.add(main_cat)
+            
+            if sub_cat:
+                subcategories[main_cat].add(sub_cat)
+                all_combinations.add(category_string)
+    
+    # Convert to sorted lists
+    sorted_categories = sorted(categories)
+    sorted_subcategories = {
+        cat: sorted(list(subs)) for cat, subs in subcategories.items()
+    }
+    sorted_all_combinations = sorted(all_combinations)
+    
+    return {
+        'categories': sorted_categories,
+        'subcategories': sorted_subcategories,
+        'all_combinations': sorted_all_combinations
+    }
+
+def format_category_display(category_string):
+    """
+    Format a category string for display, highlighting sub-categories.
+    
+    Args:
+        category_string (str): Category string
+    
+    Returns:
+        str: Formatted display string
+    """
+    if not category_string:
+        return "Uncategorized"
+    
+    main_cat, sub_cat = parse_category(category_string)
+    if sub_cat:
+        return f"{main_cat} → {sub_cat}"
+    else:
+        return main_cat
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "your-secret-key-change-this")
 
@@ -685,9 +779,11 @@ def get_reports_table_data(
     # Format data for table
     table_data = []
     for category_data in category_totals:
+        formatted_category = format_category_display(category_data.category)
         table_data.append(
             {
                 "category": category_data.category,
+                "category_display": formatted_category,
                 "total_amount": category_data.total_amount,
                 "transaction_count": category_data.transaction_count,
                 "average_amount": (
@@ -711,7 +807,7 @@ def export_reports_data(table_data, format_type):
     for row in table_data:
         export_data.append(
             {
-                "Category": row["category"],
+                "Category": row.get("category_display", row["category"]),
                 "Total Amount": row["total_amount"],
                 "Transaction Count": row["transaction_count"],
                 "Average Amount": round(row["average_amount"], 2),
@@ -1454,16 +1550,9 @@ def transactions():
             db_session.query(Account).filter(Account.id.in_(account_ids)).all()
         )
 
-        # Get unique categories from notes
-        categories = (
-            db_session.query(Transaction.note)
-            .filter(
-                Transaction.account_id.in_(account_ids), Transaction.note.isnot(None)
-            )
-            .distinct()
-            .all()
-        )
-        categories = [cat[0] for cat in categories if cat[0]]
+        # Get available categories and sub-categories
+        category_data = get_unique_categories_and_subcategories(db_session, account_ids)
+        categories = category_data['all_combinations']
 
         # Available statuses
         available_statuses = ["pending", "sent", "cancelled", "failed"]
@@ -1605,17 +1694,10 @@ def reports():
             get_available_months(db_session, account_ids) if account_ids else []
         )
 
-        # Get available categories
-        categories = []
-        if account_ids:
-            category_results = (
-                db_session.query(Transaction.note)
-                .filter(Transaction.account_id.in_(account_ids))
-                .filter(Transaction.note.isnot(None))
-                .distinct()
-                .all()
-            )
-            categories = sorted([cat[0] for cat in category_results if cat[0]])
+        # Get available categories and sub-categories
+        category_data = get_unique_categories_and_subcategories(db_session, account_ids)
+        categories = category_data['all_combinations']
+        category_structure = category_data['subcategories']
 
         # Get available statuses
         available_statuses = []
@@ -1633,19 +1715,29 @@ def reports():
 
         # If table view or export is requested, get transaction data
         table_data = None
+        hierarchical_data = None
         if view_type == "table" or export_format:
-            table_data = get_reports_table_data(
-                db_session,
-                mercury_account_id,
-                month_filter,
-                account_id,
-                category,
-                status_filter,
-            )
-
-            # Handle export requests
-            if export_format in ["csv", "excel"]:
+            # For export, use the flat table data
+            if export_format:
+                table_data = get_reports_table_data(
+                    db_session,
+                    mercury_account_id,
+                    month_filter,
+                    account_id,
+                    category,
+                    status_filter,
+                )
                 return export_reports_data(table_data, export_format)
+            else:
+                # For table view, use hierarchical data
+                hierarchical_data = get_hierarchical_reports_data(
+                    db_session,
+                    mercury_account_id,
+                    month_filter,
+                    account_id,
+                    category,
+                    status_filter,
+                )
 
         return render_template(
             "reports.html",
@@ -1653,6 +1745,7 @@ def reports():
             accounts=accounts,
             available_months=available_months,
             categories=categories,
+            category_structure=category_structure,
             available_statuses=available_statuses,
             view_type=view_type,
             current_month=month_filter,
@@ -1661,6 +1754,7 @@ def reports():
             current_category=category,
             current_status=status_filter,
             table_data=table_data,
+            hierarchical_data=hierarchical_data,
         )
     finally:
         db_session.close()
@@ -1672,6 +1766,7 @@ def budget_data():
     """API endpoint for budget chart data"""
     months = request.args.get("months", 12, type=int)
     include_pending = request.args.get("include_pending", "true").lower() == "true"
+    show_subcategories = request.args.get("show_subcategories", "false").lower() == "true"
     mercury_account_id = request.args.get("mercury_account_id", type=int)
     month_filter = request.args.get("month")  # Format: YYYY-MM
 
@@ -1770,10 +1865,19 @@ def budget_data():
                 transaction.category or "uncategorized"
             )  # Already lowercase from query
             category = category.title()  # Convert to title case for display
+            
+            # Format category for display based on show_subcategories setting
+            if show_subcategories:
+                formatted_category = format_category_display(category)
+            else:
+                # Extract main category only
+                main_cat, _ = parse_category(category)
+                formatted_category = main_cat if main_cat else "Uncategorized"
+            
             amount = abs(transaction.total_amount)  # Convert to positive for display
 
-            budget_data[month_key][category] += amount
-            categories.add(category)
+            budget_data[month_key][formatted_category] += amount
+            categories.add(formatted_category)
 
         # Format for Chart.js
         months_list = []
@@ -1831,6 +1935,7 @@ def expense_breakdown():
     """API endpoint for expense breakdown pie chart"""
     months = request.args.get("months", 3, type=int)
     include_pending = request.args.get("include_pending", "true").lower() == "true"
+    show_subcategories = request.args.get("show_subcategories", "false").lower() == "true"
     mercury_account_id = request.args.get("mercury_account_id", type=int)
     month_filter = request.args.get("month")  # Format: YYYY-MM
 
@@ -1890,7 +1995,7 @@ def expense_breakdown():
             Transaction.account_id.in_(account_ids),
             date_field >= start_date,
             date_field <= end_date,
-            Transaction.amount < 0,  # Only expenses
+            Transaction.amount < 0,  # Only expenses (negative amounts)
         ]
 
         # Add status filter if not including pending
@@ -1910,9 +2015,29 @@ def expense_breakdown():
             .all()
         )  # Group by lowercase category
 
-        # Format for pie chart
-        labels = []
-        data = []
+        # Format for pie chart - aggregate by main category or subcategory
+        category_data = defaultdict(float)
+
+        for expense in expenses:
+            category = (
+                expense.category or "uncategorized"
+            )  # Already lowercase from query
+            category = category.title()  # Convert to title case for display
+            
+            # Format category for display based on show_subcategories setting
+            if show_subcategories:
+                formatted_category = format_category_display(category)
+            else:
+                # Extract main category only
+                main_cat, _ = parse_category(category)
+                formatted_category = main_cat if main_cat else "Uncategorized"
+            
+            amount = abs(expense.total_amount)
+            category_data[formatted_category] += amount
+
+        # Convert to lists for chart
+        labels = list(category_data.keys())
+        data = list(category_data.values())
         colors = [
             "#FF6384",
             "#36A2EB",
@@ -1925,16 +2050,6 @@ def expense_breakdown():
             "#4BC0C0",
             "#FF6384",
         ]
-
-        for i, expense in enumerate(expenses):
-            category = (
-                expense.category or "uncategorized"
-            )  # Already lowercase from query
-            category = category.title()  # Convert to title case for display
-            amount = abs(expense.total_amount)
-
-            labels.append(category)
-            data.append(amount)
 
         return jsonify(
             {
@@ -2319,6 +2434,7 @@ def add_user_submit():
             return redirect(url_for("add_user_form"))
 
         # Ensure user role is selected (required for basic access)
+       
         if "user" not in selected_roles:
             flash("The 'user' role is required for basic access.", "error")
             return redirect(url_for("add_user_form"))
@@ -3126,6 +3242,126 @@ def get_transaction_attachments(transaction_id):
     finally:
         if "db_session" in locals():
             db_session.close()
+
+
+def get_hierarchical_reports_data(
+    db_session,
+    mercury_account_id=None,
+    month_filter=None,
+    account_id=None,
+    category=None,
+    status_filter=None,
+):
+    """Get aggregated category data grouped by main categories with expandable sub-categories"""
+    # Get user's accessible Mercury accounts
+    mercury_accounts = (
+        db_session.query(MercuryAccount)
+        .filter(MercuryAccount.users.contains(current_user))
+        .all()
+    )
+
+    # Filter by specific Mercury account if selected
+    if mercury_account_id:
+        mercury_accounts = [
+            ma for ma in mercury_accounts if ma.id == mercury_account_id
+        ]
+
+    account_ids = []
+    for mercury_account in mercury_accounts:
+        accounts = (
+            db_session.query(Account)
+            .filter_by(mercury_account_id=mercury_account.id)
+            .filter_by(exclude_from_reports=False)
+            .all()
+        )
+        account_ids.extend([acc.id for acc in accounts])
+
+    # Build query for aggregation
+    category_field = func.coalesce(Transaction.note, "Uncategorized")
+    query = db_session.query(
+        category_field.label("category"),
+        func.sum(Transaction.amount).label("total_amount"),
+        func.count(Transaction.id).label("transaction_count"),
+    ).filter(Transaction.account_id.in_(account_ids))
+
+    # Add filters
+    if account_id:
+        query = query.filter_by(account_id=account_id)
+    if category:
+        query = query.filter(Transaction.note.ilike(f"%{category}%"))
+    if status_filter:
+        query = query.filter(Transaction.status.in_(status_filter))
+
+    # Add month filter
+    if month_filter:
+        try:
+            year, month = map(int, month_filter.split("-"))
+            from sqlalchemy import and_, extract
+            effective_date = func.coalesce(Transaction.posted_at, Transaction.created_at)
+            query = query.filter(
+                and_(
+                    extract("year", effective_date) == year,
+                    extract("month", effective_date) == month,
+                )
+            )
+        except (ValueError, AttributeError):
+            pass
+
+    # Get all category data
+    category_totals = query.group_by(category_field).all()
+
+    # Group by main categories
+    main_categories = {}
+    
+    for category_data in category_totals:
+        main_cat, sub_cat = parse_category(category_data.category)
+        if not main_cat:
+            main_cat = "Uncategorized"
+        
+        # Initialize main category if not exists
+        if main_cat not in main_categories:
+            main_categories[main_cat] = {
+                "main_category": main_cat,
+                "total_amount": 0,
+                "transaction_count": 0,
+                "subcategories": []
+            }
+        
+        # Add to main category totals
+        main_categories[main_cat]["total_amount"] += category_data.total_amount
+        main_categories[main_cat]["transaction_count"] += category_data.transaction_count
+        
+        # Add subcategory data if it exists
+        if sub_cat:
+            main_categories[main_cat]["subcategories"].append({
+                "subcategory": sub_cat,
+                "full_category": category_data.category,
+                "total_amount": category_data.total_amount,
+                "transaction_count": category_data.transaction_count,
+                "average_amount": (
+                    category_data.total_amount / category_data.transaction_count
+                    if category_data.transaction_count > 0
+                    else 0
+                ),
+            })
+
+    # Calculate averages for main categories
+    for main_cat_data in main_categories.values():
+        main_cat_data["average_amount"] = (
+            main_cat_data["total_amount"] / main_cat_data["transaction_count"]
+            if main_cat_data["transaction_count"] > 0
+            else 0
+        )
+        # Sort subcategories by amount
+        main_cat_data["subcategories"].sort(
+            key=lambda x: x["total_amount"], reverse=True
+        )
+
+    # Convert to list and sort by total amount
+    hierarchical_data = list(main_categories.values())
+    hierarchical_data.sort(key=lambda x: x["total_amount"], reverse=True)
+
+    return hierarchical_data
 
 
 # Initialize settings on app startup
