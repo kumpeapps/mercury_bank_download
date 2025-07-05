@@ -276,8 +276,17 @@ class Account(Base):
             return
             
         # If there's a current policy, set its end date to start date of new policy
-        now = datetime.now()
-        effective_date = start_date if start_date else now
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        if start_date:
+            # Ensure start_date is timezone-aware
+            if start_date.tzinfo is None or start_date.tzinfo.utcoffset(start_date) is None:
+                effective_date = start_date.replace(tzinfo=timezone.utc)
+            else:
+                effective_date = start_date
+        else:
+            effective_date = now
         
         if current_policy:
             # Only end the current policy when the new policy takes effect
