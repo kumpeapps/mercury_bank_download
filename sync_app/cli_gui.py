@@ -1172,10 +1172,11 @@ class MercurySyncCLI:
         self._print_header("Mercury Bank Sync Service - CLI")
         print("1. System Status")
         print("2. Manage Mercury Accounts")
-        print("3. Manage Users")
-        print("4. View Sync Activity")
-        print("5. Database Tools")
-        print("6. Exit")
+        print("3. Manage Bank Accounts")
+        print("4. Manage Users")
+        print("5. View Sync Activity")
+        print("6. Database Tools")
+        print("7. Exit")
 
     def _database_tools(self):
         """Database management tools."""
@@ -1242,6 +1243,7 @@ class MercurySyncCLI:
                 "accounts",
                 "transactions",
                 "system_settings",
+                "receipt_policies",
             ]
 
             print(f"\n{CLIColors.BOLD}Database Schema Check:{CLIColors.ENDC}")
@@ -1300,6 +1302,246 @@ class MercurySyncCLI:
         except Exception as e:
             self._print_error(f"Error getting database statistics: {str(e)}")
 
+    def _manage_bank_accounts(self):
+        """Manage individual bank accounts within Mercury accounts."""
+        admin_context = self._get_admin_user_context()
+
+        while True:
+            self._print_header("Bank Account Management")
+            print("1. List all bank accounts")
+            print("2. Edit bank account settings")
+            print("3. Manage receipt policies")
+            print("4. View receipt policy history")
+            print("5. Back to main menu")
+
+            choice = self._get_input("\nSelect option (1-5): ")
+
+            if choice == "1":
+                self._list_bank_accounts()
+            elif choice == "2":
+                self._edit_bank_account()
+            elif choice == "3":
+                self._manage_receipt_policy()
+            elif choice == "4":
+                self._view_receipt_policy_history()
+            elif choice == "5":
+                break
+            else:
+                self._print_error("Invalid choice")
+
+            if choice != "5":
+                self._pause()
+
+    def _list_bank_accounts(self):
+        """List all bank accounts from all Mercury accounts."""
+        try:
+            accounts = self.session.query(Account).all()
+
+            if not accounts:
+                self._print_info("No bank accounts found")
+                return
+
+            print(f"\n{CLIColors.BOLD}Bank Accounts:{CLIColors.ENDC}")
+            print(
+                f"{'ID':<32} {'Name':<25} {'Type':<12} {'Balance':<12} {'Receipt Policy'}"
+            )
+            print("-" * 100)
+
+            for account in accounts:
+                # Format receipt policy display
+                if account.receipt_required_deposits == "none" and account.receipt_required_charges == "none":
+                    receipt_policy = "None required"
+                elif account.receipt_required_deposits == "always" and account.receipt_required_charges == "always":
+                    receipt_policy = "Always required"
+                else:
+                    deposit_policy = "None"
+                    charge_policy = "None"
+                    
+                    if account.receipt_required_deposits == "always":
+                        deposit_policy = "Always"
+                    elif account.receipt_required_deposits == "threshold":
+                        deposit_policy = f">${account.receipt_threshold_deposits}"
+                    
+                    if account.receipt_required_charges == "always":
+                        charge_policy = "Always"
+                    elif account.receipt_required_charges == "threshold":
+                        charge_policy = f">${account.receipt_threshold_charges}"
+                        
+                    receipt_policy = f"Deposits: {deposit_policy}, Charges: {charge_policy}"
+                
+                print(
+                    f"{account.id:<32} {account.name[:24]:<25} {account.account_type or 'N/A':<12} "
+                    f"${account.balance or 0:<11.2f} {receipt_policy}"
+                )
+
+        except Exception as e:
+            self._print_error(f"Error listing bank accounts: {str(e)}")
+            
+    def _edit_bank_account(self):
+        """Edit basic bank account settings."""
+        try:
+            self._list_bank_accounts()
+            
+            account_id = self._get_input("\nEnter account ID to edit (or 'cancel'): ")
+            if account_id.lower() == "cancel":
+                return
+                
+            account = self.session.query(Account).filter_by(id=account_id).first()
+            if not account:
+                self._print_error("Account not found")
+                return
+                
+            self._print_header(f"Edit Bank Account: {account.name}")
+            
+            # Allow editing basic account settings
+            new_name = self._get_input(f"Name (current: {account.name}): ")
+            if new_name:
+                account.name = new_name
+                
+            new_nickname = self._get_input(f"Nickname (current: {account.nickname or 'None'}): ")
+            if new_nickname:
+                account.nickname = new_nickname
+                
+            exclude_input = self._get_input(
+                f"Exclude from reports (y/n, current: {'y' if account.exclude_from_reports else 'n'}): "
+            )
+            if exclude_input.lower() in ["y", "n"]:
+                account.exclude_from_reports = exclude_input.lower() == "y"
+                
+            self.session.commit()
+            self._print_success(f"Bank account '{account.name}' updated successfully")
+            
+        except Exception as e:
+            self.session.rollback()
+            self._print_error(f"Error editing bank account: {str(e)}")
+            
+    def _manage_receipt_policy(self):
+        """Update receipt policy for a bank account."""
+        try:
+            self._list_bank_accounts()
+            
+            account_id = self._get_input("\nEnter account ID to manage receipt policy (or 'cancel'): ")
+            if account_id.lower() == "cancel":
+                return
+                
+            account = self.session.query(Account).filter_by(id=account_id).first()
+            if not account:
+                self._print_error("Account not found")
+                return
+                
+            self._print_header(f"Manage Receipt Policy: {account.name}")
+            
+            # Show current settings
+            print(f"\n{CLIColors.BOLD}Current Receipt Settings:{CLIColors.ENDC}")
+            print(f"  Deposits: {account.receipt_required_deposits} "
+                  f"({f'${account.receipt_threshold_deposits}' if account.receipt_threshold_deposits else 'N/A'})")
+            print(f"  Charges: {account.receipt_required_charges} "
+                  f"({f'${account.receipt_threshold_charges}' if account.receipt_threshold_charges else 'N/A'})")
+            
+            print(f"\n{CLIColors.BOLD}Update Receipt Policy:{CLIColors.ENDC}")
+            print("Receipt Requirements: 'none', 'always', or 'threshold'")
+            
+            # Get new deposit receipt settings
+            new_deposit_policy = self._get_input("Deposit receipt requirement (none/always/threshold): ")
+            if new_deposit_policy not in ["none", "always", "threshold"]:
+                self._print_error("Invalid deposit receipt requirement")
+                return
+                
+            new_deposit_threshold = None
+            if new_deposit_policy == "threshold":
+                threshold_input = self._get_input("Deposit threshold amount ($): ")
+                try:
+                    new_deposit_threshold = float(threshold_input)
+                except ValueError:
+                    self._print_error("Invalid threshold amount")
+                    return
+            
+            # Get new charge receipt settings
+            new_charge_policy = self._get_input("Charge receipt requirement (none/always/threshold): ")
+            if new_charge_policy not in ["none", "always", "threshold"]:
+                self._print_error("Invalid charge receipt requirement")
+                return
+                
+            new_charge_threshold = None
+            if new_charge_policy == "threshold":
+                threshold_input = self._get_input("Charge threshold amount ($): ")
+                try:
+                    new_charge_threshold = float(threshold_input)
+                except ValueError:
+                    self._print_error("Invalid threshold amount")
+                    return
+            
+            # Create a new receipt policy history record
+            account.update_receipt_policy(
+                receipt_required_deposits=new_deposit_policy,
+                receipt_threshold_deposits=new_deposit_threshold,
+                receipt_required_charges=new_charge_policy,
+                receipt_threshold_charges=new_charge_threshold
+            )
+            
+            self.session.commit()
+            self._print_success("Receipt policy updated successfully")
+            
+        except Exception as e:
+            self.session.rollback()
+            self._print_error(f"Error updating receipt policy: {str(e)}")
+            
+    def _view_receipt_policy_history(self):
+        """View the history of receipt policies for a bank account."""
+        try:
+            self._list_bank_accounts()
+            
+            account_id = self._get_input("\nEnter account ID to view receipt policy history (or 'cancel'): ")
+            if account_id.lower() == "cancel":
+                return
+                
+            account = self.session.query(Account).filter_by(id=account_id).first()
+            if not account:
+                self._print_error("Account not found")
+                return
+                
+            # Import here to avoid circular imports
+            from models.receipt_policy import ReceiptPolicy
+            
+            # Get all receipt policies for this account, ordered by date
+            policies = (
+                self.session.query(ReceiptPolicy)
+                .filter_by(account_id=account.id)
+                .order_by(ReceiptPolicy.start_date.desc())
+                .all()
+            )
+            
+            if not policies:
+                self._print_info(f"No receipt policy history found for '{account.name}'")
+                return
+                
+            self._print_header(f"Receipt Policy History: {account.name}")
+            
+            print(f"\n{'Start Date':<20} {'End Date':<20} {'Deposits':<30} {'Charges':<30}")
+            print("-" * 100)
+            
+            for policy in policies:
+                # Format policy display
+                deposit_policy = policy.receipt_required_deposits
+                if deposit_policy == "threshold":
+                    deposit_policy = f"threshold (${policy.receipt_threshold_deposits})"
+                    
+                charge_policy = policy.receipt_required_charges
+                if charge_policy == "threshold":
+                    charge_policy = f"threshold (${policy.receipt_threshold_charges})"
+                
+                end_date = policy.end_date.strftime("%Y-%m-%d %H:%M") if policy.end_date else "Current"
+                
+                print(
+                    f"{policy.start_date.strftime('%Y-%m-%d %H:%M'):<20} "
+                    f"{end_date:<20} "
+                    f"{deposit_policy:<30} "
+                    f"{charge_policy:<30}"
+                )
+                
+        except Exception as e:
+            self._print_error(f"Error viewing receipt policy history: {str(e)}")
+
     def run(self):
         """Main application loop."""
         # Print welcome message
@@ -1318,7 +1560,7 @@ class MercurySyncCLI:
         while self.running:
             try:
                 self._show_main_menu()
-                choice = self._get_input("\nSelect option (1-6): ")
+                choice = self._get_input("\nSelect option (1-7): ")
 
                 if choice == "1":
                     self._show_system_status()
@@ -1326,17 +1568,19 @@ class MercurySyncCLI:
                 elif choice == "2":
                     self._manage_mercury_accounts()
                 elif choice == "3":
-                    self._manage_users()
+                    self._manage_bank_accounts()
                 elif choice == "4":
+                    self._manage_users()
+                elif choice == "5":
                     self._view_sync_logs()
                     self._pause()
-                elif choice == "5":
-                    self._database_tools()
                 elif choice == "6":
+                    self._database_tools()
+                elif choice == "7":
                     self._print_info("Goodbye!")
                     break
                 else:
-                    self._print_error("Invalid choice. Please select 1-6.")
+                    self._print_error("Invalid choice. Please select 1-7.")
                     self._pause()
 
             except KeyboardInterrupt:

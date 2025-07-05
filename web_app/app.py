@@ -158,26 +158,33 @@ def initialize_system_settings():
                 # Always update the external management setting to match environment variable
                 existing.value = value
                 print(f"✅ Updated users_externally_managed setting to: {value}")
-                
+
         # Apply fallback logic: if no admin users exist, enable registration regardless of settings
         from models.role import Role
+
         admin_count = (
             db_session.query(User)
             .filter(User.roles.any(Role.name.in_(["admin", "super-admin"])))
             .count()
         )
-        
+
         print(f"🔍 Admin user count: {admin_count}")
-        
+
         if admin_count == 0:
             # No admins exist - force enable registration as a safety fallback
-            registration_setting = db_session.query(SystemSetting).filter_by(key="registration_enabled").first()
+            registration_setting = (
+                db_session.query(SystemSetting)
+                .filter_by(key="registration_enabled")
+                .first()
+            )
             if registration_setting:
                 current_value = registration_setting.value
                 print(f"🔍 Current registration_enabled value: {current_value}")
                 if current_value == "false":
                     registration_setting.value = "true"
-                    print("🚨 No admin users found - enabling registration as safety fallback")
+                    print(
+                        "🚨 No admin users found - enabling registration as safety fallback"
+                    )
                 else:
                     print("ℹ️  Registration already enabled - no fallback action needed")
             else:
@@ -215,7 +222,12 @@ def load_user(user_id):
     db_session = Session()
     try:
         # Eagerly load the user and roles to avoid DetachedInstanceError
-        user = db_session.query(User).options(joinedload(User.roles)).filter(User.id == int(user_id)).first()
+        user = (
+            db_session.query(User)
+            .options(joinedload(User.roles))
+            .filter(User.id == int(user_id))
+            .first()
+        )
         if user:
             # Make the user object detached from this session to avoid conflicts
             db_session.expunge(user)
@@ -235,41 +247,56 @@ def check_user_permissions():
     they will be automatically logged out.
     """
     # Skip permission checks for certain routes
-    skip_routes = ['login', 'register', 'static', 'logout', 'health', 'index']
-    
+    skip_routes = ["login", "register", "static", "logout", "health", "index"]
+
     # Check if we're accessing a route that should be skipped
     if request.endpoint in skip_routes:
         return
-    
+
     # Only check permissions if user is logged in
     if current_user.is_authenticated:
         db_session = Session()
         try:
             # Re-query the user to get fresh data from the database
             fresh_user = db_session.query(User).get(current_user.id)
-            
+
             if fresh_user:
                 # Check if user has been locked
-                if fresh_user.has_role('locked'):
-                    logger.info(f"User {fresh_user.username} has been locked - logging out")
+                if fresh_user.has_role("locked"):
+                    logger.info(
+                        f"User {fresh_user.username} has been locked - logging out"
+                    )
                     logout_user()
-                    flash("Your account has been locked. Please contact an administrator.", "error")
+                    flash(
+                        "Your account has been locked. Please contact an administrator.",
+                        "error",
+                    )
                     return redirect(url_for("login"))
-                
+
                 # Check if user no longer has the user role
-                if not fresh_user.has_role('user'):
-                    logger.info(f"User {fresh_user.username} no longer has 'user' role - logging out")
+                if not fresh_user.has_role("user"):
+                    logger.info(
+                        f"User {fresh_user.username} no longer has 'user' role - logging out"
+                    )
                     logout_user()
-                    flash("Your account permissions have changed. Please contact an administrator.", "error")
+                    flash(
+                        "Your account permissions have changed. Please contact an administrator.",
+                        "error",
+                    )
                     return redirect(url_for("login"))
-                    
+
             else:
                 # User not found in database - log them out
-                logger.info(f"User {current_user.id} not found in database - logging out")
+                logger.info(
+                    f"User {current_user.id} not found in database - logging out"
+                )
                 logout_user()
-                flash("Your account could not be found. Please contact an administrator.", "error")
+                flash(
+                    "Your account could not be found. Please contact an administrator.",
+                    "error",
+                )
                 return redirect(url_for("login"))
-                
+
         except Exception as e:
             logger.error(f"Error checking user permissions: {e}")
             # In case of database errors, don't log out the user unless it's critical
@@ -305,7 +332,9 @@ def get_user_accessible_accounts(user_in_session, db_session, mercury_account_id
     return accessible_accounts
 
 
-def get_user_accessible_accounts_for_reports(user_in_session, db_session, mercury_account_id=None):
+def get_user_accessible_accounts_for_reports(
+    user_in_session, db_session, mercury_account_id=None
+):
     """
     Get all accounts that a user has access to for reports, excluding accounts marked as exclude_from_reports.
 
@@ -318,13 +347,13 @@ def get_user_accessible_accounts_for_reports(user_in_session, db_session, mercur
         list: List of Account objects the user can access for reports
     """
     # Get all accessible accounts first
-    accessible_accounts = get_user_accessible_accounts(user_in_session, db_session, mercury_account_id)
-    
+    accessible_accounts = get_user_accessible_accounts(
+        user_in_session, db_session, mercury_account_id
+    )
+
     # Filter out accounts that are excluded from reports
     report_accounts = [
-        account
-        for account in accessible_accounts
-        if not account.exclude_from_reports
+        account for account in accessible_accounts if not account.exclude_from_reports
     ]
 
     return report_accounts
@@ -375,17 +404,17 @@ def is_signup_enabled():
         db_session.close()
 
 
-def get_gravatar_url(email, size=40, default='identicon'):
+def get_gravatar_url(email, size=40, default="identicon"):
     """Generate a Gravatar URL for the given email address."""
     if not email:
         email = ""
-    
+
     # Create the hash
-    email_hash = hashlib.md5(email.lower().encode('utf-8')).hexdigest()
-    
+    email_hash = hashlib.md5(email.lower().encode("utf-8")).hexdigest()
+
     # Build the URL
     gravatar_url = f"https://www.gravatar.com/avatar/{email_hash}?s={size}&d={default}"
-    
+
     return gravatar_url
 
 
@@ -418,27 +447,31 @@ def inject_branding():
     """Inject branding settings for template use."""
     try:
         db_session = Session()
-        app_name = SystemSetting.get_value(db_session, "app_name", "Mercury Bank Integration")
-        app_description = SystemSetting.get_value(db_session, "app_description", "Mercury Bank data synchronization and management platform")
+        app_name = SystemSetting.get_value(
+            db_session, "app_name", "Mercury Bank Integration"
+        )
+        app_description = SystemSetting.get_value(
+            db_session,
+            "app_description",
+            "Mercury Bank data synchronization and management platform",
+        )
         logo_url = SystemSetting.get_value(db_session, "logo_url", "")
         db_session.close()
-        
+
         return dict(
-            app_name=app_name,
-            app_description=app_description,
-            logo_url=logo_url
+            app_name=app_name, app_description=app_description, logo_url=logo_url
         )
     except Exception as e:
         print(f"Error getting branding settings: {e}")
         return dict(
             app_name="Mercury Bank Integration",
             app_description="Mercury Bank data synchronization and management platform",
-            logo_url=""
+            logo_url="",
         )
 
 
 # Register template filters
-@app.template_filter('gravatar')
+@app.template_filter("gravatar")
 def gravatar_filter(email, size=40):
     """Template filter for generating Gravatar URLs."""
     return get_gravatar_url(email, size)
@@ -463,19 +496,18 @@ def export_transactions(transactions, format_type, accounts):
     for transaction in transactions:
         account = account_lookup.get(transaction.account_id)
         effective_date = transaction.posted_at or transaction.created_at
-        
+
         # Get receipt status if account is available
         receipt_status = ""
         if account:
             status = account.get_receipt_status_for_transaction(
-                transaction.amount, 
-                transaction.number_of_attachments > 0
+                transaction.amount, transaction.number_of_attachments > 0
             )
             receipt_status_map = {
                 "required_present": "Required (Present)",
                 "required_missing": "Required (Missing)",
                 "optional_present": "Optional (Present)",
-                "optional_missing": "Optional (Not Present)"
+                "optional_missing": "Optional (Not Present)",
             }
             receipt_status = receipt_status_map.get(status, "Unknown")
 
@@ -507,7 +539,9 @@ def export_transactions(transactions, format_type, accounts):
                     if transaction.created_at
                     else ""
                 ),
-                "Has Attachments": "Yes" if transaction.number_of_attachments > 0 else "No",
+                "Has Attachments": (
+                    "Yes" if transaction.number_of_attachments > 0 else "No"
+                ),
                 "Number of Attachments": transaction.number_of_attachments,
                 "Receipt Status": receipt_status,
             }
@@ -594,7 +628,9 @@ def get_reports_table_data(
         accounts = (
             db_session.query(Account)
             .filter_by(mercury_account_id=mercury_account.id)
-            .filter_by(exclude_from_reports=False)  # Exclude accounts marked as exclude_from_reports
+            .filter_by(
+                exclude_from_reports=False
+            )  # Exclude accounts marked as exclude_from_reports
             .all()
         )
         for account in accounts:
@@ -691,6 +727,7 @@ def export_reports_data(table_data, format_type):
 # Decorators
 def transactions_required(f):
     """Decorator to require transactions access for a route."""
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # Get user from database to avoid DetachedInstanceError
@@ -698,15 +735,21 @@ def transactions_required(f):
         try:
             user = db_session.query(User).get(current_user.id)
             if not user or not user.can_access_transactions():
-                flash("Access denied. You don't have permission to view transactions.", "error")
+                flash(
+                    "Access denied. You don't have permission to view transactions.",
+                    "error",
+                )
                 return redirect(url_for("dashboard"))
         finally:
             db_session.close()
         return f(*args, **kwargs)
+
     return decorated_function
+
 
 def reports_required(f):
     """Decorator to require reports access for a route."""
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # Get user from database to avoid DetachedInstanceError
@@ -714,31 +757,41 @@ def reports_required(f):
         try:
             user = db_session.query(User).get(current_user.id)
             if not user or not user.can_access_reports():
-                flash("Access denied. You don't have permission to view reports.", "error")
+                flash(
+                    "Access denied. You don't have permission to view reports.", "error"
+                )
                 return redirect(url_for("dashboard"))
         finally:
             db_session.close()
         return f(*args, **kwargs)
+
     return decorated_function
+
 
 def admin_required(f):
     """Decorator to require admin access for a route."""
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # Get user from database to avoid DetachedInstanceError
         db_session = Session()
         try:
             user = db_session.query(User).get(current_user.id)
-            if not user or (not user.has_role('admin') and not user.has_role('super-admin')):
+            if not user or (
+                not user.has_role("admin") and not user.has_role("super-admin")
+            ):
                 flash("Access denied. Admin privileges required.", "error")
                 return redirect(url_for("dashboard"))
         finally:
             db_session.close()
         return f(*args, **kwargs)
+
     return decorated_function
+
 
 def super_admin_required(f):
     """Decorator to require super admin access for a route."""
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # Get user from database to avoid DetachedInstanceError
@@ -751,6 +804,7 @@ def super_admin_required(f):
         finally:
             db_session.close()
         return f(*args, **kwargs)
+
     return decorated_function
 
 
@@ -774,23 +828,35 @@ def login():
 
             if user and user.check_password(password):
                 # Check if user has the locked role
-                if user.has_role('locked'):
-                    flash("Your account has been locked. Please contact an administrator.", "error")
+                if user.has_role("locked"):
+                    flash(
+                        "Your account has been locked. Please contact an administrator.",
+                        "error",
+                    )
                     return render_template(
                         "login.html",
                         signup_enabled=is_signup_enabled(),
-                        users_externally_managed=os.environ.get("USERS_EXTERNALLY_MANAGED", "false").lower() == "true"
+                        users_externally_managed=os.environ.get(
+                            "USERS_EXTERNALLY_MANAGED", "false"
+                        ).lower()
+                        == "true",
                     )
-                
+
                 # Check if user has the user role (required for basic access)
-                if not user.has_role('user'):
-                    flash("Your account does not have the required permissions. Please contact an administrator.", "error")
+                if not user.has_role("user"):
+                    flash(
+                        "Your account does not have the required permissions. Please contact an administrator.",
+                        "error",
+                    )
                     return render_template(
                         "login.html",
                         signup_enabled=is_signup_enabled(),
-                        users_externally_managed=os.environ.get("USERS_EXTERNALLY_MANAGED", "false").lower() == "true"
+                        users_externally_managed=os.environ.get(
+                            "USERS_EXTERNALLY_MANAGED", "false"
+                        ).lower()
+                        == "true",
                     )
-                
+
                 login_user(user)
                 flash("Logged in successfully!", "success")
                 return redirect(url_for("dashboard"))
@@ -875,30 +941,42 @@ def register():
             # Assign roles to the new user
             try:
                 from models.role import Role
-                
+
                 # All users get the basic "user" role
-                user_role = Role.get_or_create(db_session, "user", 
-                                             "Basic user with read access to their own data", 
-                                             is_system_role=True)
+                user_role = Role.get_or_create(
+                    db_session,
+                    "user",
+                    "Basic user with read access to their own data",
+                    is_system_role=True,
+                )
                 new_user.roles.append(user_role)
-                
+
                 # If this is the first user, also grant admin and super-admin roles
                 if is_first_user:
-                    admin_role = Role.get_or_create(db_session, "admin", 
-                                                  "Administrator with full system access", 
-                                                  is_system_role=True)
-                    super_admin_role = Role.get_or_create(db_session, "super-admin", 
-                                                        "Super administrator with all privileges including user management", 
-                                                        is_system_role=True)
+                    admin_role = Role.get_or_create(
+                        db_session,
+                        "admin",
+                        "Administrator with full system access",
+                        is_system_role=True,
+                    )
+                    super_admin_role = Role.get_or_create(
+                        db_session,
+                        "super-admin",
+                        "Super administrator with all privileges including user management",
+                        is_system_role=True,
+                    )
                     new_user.roles.append(admin_role)
                     new_user.roles.append(super_admin_role)
-                
+
             except Exception as role_error:
                 print(f"🚨 ERROR during role assignment: {role_error}")
                 import traceback
+
                 print(f"🚨 Full traceback: {traceback.format_exc()}")
                 # Continue with user creation but without roles
-                flash(f"User created but role assignment failed: {role_error}", "warning")
+                flash(
+                    f"User created but role assignment failed: {role_error}", "warning"
+                )
 
             # Create user settings
             try:
@@ -910,6 +988,7 @@ def register():
             except Exception as settings_error:
                 print(f"🚨 ERROR during user settings creation: {settings_error}")
                 import traceback
+
                 print(f"🚨 Full traceback: {traceback.format_exc()}")
                 db_session.rollback()
                 flash(f"User creation failed: {settings_error}", "error")
@@ -1621,7 +1700,9 @@ def budget_data():
             accounts = (
                 db_session.query(Account)
                 .filter_by(mercury_account_id=mercury_account.id)
-                .filter_by(exclude_from_reports=False)  # Exclude accounts marked as exclude_from_reports
+                .filter_by(
+                    exclude_from_reports=False
+                )  # Exclude accounts marked as exclude_from_reports
                 .all()
             )
             account_ids.extend([acc.id for acc in accounts])
@@ -1778,7 +1859,9 @@ def expense_breakdown():
             accounts = (
                 db_session.query(Account)
                 .filter_by(mercury_account_id=mercury_account.id)
-                .filter_by(exclude_from_reports=False)  # Exclude accounts marked as exclude_from_reports
+                .filter_by(
+                    exclude_from_reports=False
+                )  # Exclude accounts marked as exclude_from_reports
                 .all()
             )
             account_ids.extend([acc.id for acc in accounts])
@@ -1885,7 +1968,9 @@ def admin_settings():
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
+        if not (
+            user_in_session.has_role("admin") or user_in_session.has_role("super-admin")
+        ):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
@@ -1897,7 +1982,7 @@ def admin_settings():
         if request.method == "POST":
             # Define branding settings that are always editable
             branding_settings = ["app_name", "app_description", "logo_url"]
-            
+
             # Update settings
             updated_count = 0
             for key, value in request.form.items():
@@ -1911,11 +1996,11 @@ def admin_settings():
                     if setting and setting.is_editable:
                         # Allow branding settings to be changed even when users are externally managed
                         is_branding_setting = setting_key in branding_settings
-                        
+
                         # Block user management settings if users are externally managed
                         if users_externally_managed and not is_branding_setting:
                             continue  # Skip user management settings
-                        
+
                         setting.value = value
                         updated_count += 1
 
@@ -1923,7 +2008,10 @@ def admin_settings():
                 db_session.commit()
                 flash("Settings updated successfully!", "success")
             elif users_externally_managed:
-                flash("Only branding settings can be changed when users are externally managed.", "warning")
+                flash(
+                    "Only branding settings can be changed when users are externally managed.",
+                    "warning",
+                )
             else:
                 flash("No settings were updated.", "info")
             return redirect(url_for("admin_settings"))
@@ -1954,7 +2042,9 @@ def manage_mercury_access(mercury_account_id):
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
+        if not (
+            user_in_session.has_role("admin") or user_in_session.has_role("super-admin")
+        ):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
@@ -2103,7 +2193,9 @@ def admin_users():
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
+        if not (
+            user_in_session.has_role("admin") or user_in_session.has_role("super-admin")
+        ):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
@@ -2111,7 +2203,11 @@ def admin_users():
         all_users = db_session.query(User).all()
 
         # Get admin users (using role-based system)
-        admin_users = [user for user in all_users if user.has_role('admin') or user.has_role('super-admin')]
+        admin_users = [
+            user
+            for user in all_users
+            if user.has_role("admin") or user.has_role("super-admin")
+        ]
 
         # Get user deletion prevention setting
         prevent_user_deletion = SystemSetting.get_bool_value(
@@ -2149,7 +2245,9 @@ def add_user_form():
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
+        if not (
+            user_in_session.has_role("admin") or user_in_session.has_role("super-admin")
+        ):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
@@ -2158,11 +2256,15 @@ def add_user_form():
             db_session, "users_externally_managed", default=False
         )
         if users_externally_managed:
-            flash("User creation is not allowed when users are externally managed.", "error")
+            flash(
+                "User creation is not allowed when users are externally managed.",
+                "error",
+            )
             return redirect(url_for("admin_users"))
 
         # Get available roles
         from models.role import Role
+
         available_roles = db_session.query(Role).order_by(Role.name).all()
 
         return render_template("add_user.html", available_roles=available_roles)
@@ -2184,7 +2286,9 @@ def add_user_submit():
             return redirect(url_for("login"))
 
         # Check if user is admin
-        if not (user_in_session.has_role('admin') or user_in_session.has_role('super-admin')):
+        if not (
+            user_in_session.has_role("admin") or user_in_session.has_role("super-admin")
+        ):
             flash("Access denied. Admin privileges required.", "error")
             return redirect(url_for("dashboard"))
 
@@ -2193,7 +2297,10 @@ def add_user_submit():
             db_session, "users_externally_managed", default=False
         )
         if users_externally_managed:
-            flash("User creation is not allowed when users are externally managed.", "error")
+            flash(
+                "User creation is not allowed when users are externally managed.",
+                "error",
+            )
             return redirect(url_for("admin_users"))
 
         username = request.form.get("username", "").strip()
@@ -2212,7 +2319,7 @@ def add_user_submit():
             return redirect(url_for("add_user_form"))
 
         # Ensure user role is selected (required for basic access)
-        if 'user' not in selected_roles:
+        if "user" not in selected_roles:
             flash("The 'user' role is required for basic access.", "error")
             return redirect(url_for("add_user_form"))
 
@@ -2236,19 +2343,25 @@ def add_user_submit():
         # Assign roles
         import logging
         from models.role import Role
+
         for role_name in selected_roles:
             role = db_session.query(Role).filter_by(name=role_name).first()
             if role:
                 new_user.roles.append(role)
             else:
-                logging.warning(f"Requested role '{role_name}' does not exist in the database. Possible typo or misconfiguration.")
+                logging.warning(
+                    f"Requested role '{role_name}' does not exist in the database. Possible typo or misconfiguration."
+                )
 
         # Create user settings
         user_settings = UserSettings(user_id=new_user.id)
         db_session.add(user_settings)
         db_session.commit()
 
-        flash(f"User '{username}' created successfully with roles: {', '.join(selected_roles)}!", "success")
+        flash(
+            f"User '{username}' created successfully with roles: {', '.join(selected_roles)}!",
+            "success",
+        )
         return redirect(url_for("admin_users"))
     except Exception as e:
         db_session.rollback()
@@ -2288,8 +2401,8 @@ def lock_user(user_id):
             return redirect(url_for("admin_users"))
 
         # Add the locked role
-        if not user.has_role('locked'):
-            user.add_role('locked', db_session)
+        if not user.has_role("locked"):
+            user.add_role("locked", db_session)
             db_session.commit()
             flash(f"User '{user.username}' has been locked.", "success")
         else:
@@ -2321,8 +2434,8 @@ def unlock_user(user_id):
             return redirect(url_for("admin_users"))
 
         # Remove the locked role
-        if user.has_role('locked'):
-            user.remove_role('locked', db_session)
+        if user.has_role("locked"):
+            user.remove_role("locked", db_session)
             db_session.commit()
             flash(f"User '{user.username}' has been unlocked.", "success")
         else:
@@ -2377,7 +2490,8 @@ def delete_user_by_id(user_id):
 
         # Check if user is an admin
         from models.role import Role
-        if user.has_role('admin') or user.has_role('super-admin'):
+
+        if user.has_role("admin") or user.has_role("super-admin"):
             # Check if this is the last admin
             admin_count = (
                 db_session.query(User)
@@ -2428,15 +2542,21 @@ def edit_user_roles(user_id):
 
         # Get available roles
         from models.role import Role
+
         available_roles = db_session.query(Role).order_by(Role.name).all()
 
         if request.method == "POST":
             selected_roles = request.form.getlist("roles")
 
             # Validate that 'user' role is selected (required for basic access)
-            if 'user' not in selected_roles and not user.is_super_admin:
-                flash("The 'user' role is required for basic access. Super-admin users are exempt from this requirement.", "warning")
-                return render_template("edit_user_roles.html", user=user, available_roles=available_roles)
+            if "user" not in selected_roles and not user.is_super_admin:
+                flash(
+                    "The 'user' role is required for basic access. Super-admin users are exempt from this requirement.",
+                    "warning",
+                )
+                return render_template(
+                    "edit_user_roles.html", user=user, available_roles=available_roles
+                )
 
             # Clear existing roles
             user.roles.clear()
@@ -2448,10 +2568,15 @@ def edit_user_roles(user_id):
                     user.roles.append(role)
 
             db_session.commit()
-            flash(f"Roles updated successfully for user '{user.username}'. Current roles: {', '.join(selected_roles)}", "success")
+            flash(
+                f"Roles updated successfully for user '{user.username}'. Current roles: {', '.join(selected_roles)}",
+                "success",
+            )
             return redirect(url_for("admin_users"))
 
-        return render_template("edit_user_roles.html", user=user, available_roles=available_roles)
+        return render_template(
+            "edit_user_roles.html", user=user, available_roles=available_roles
+        )
 
     except Exception as e:
         db_session.rollback()
@@ -2486,9 +2611,7 @@ def edit_user_settings(user_id):
             return redirect(url_for("admin_users"))
 
         # Get or create user settings
-        settings = (
-            db_session.query(UserSettings).filter_by(user_id=user.id).first()
-        )
+        settings = db_session.query(UserSettings).filter_by(user_id=user.id).first()
         if not settings:
             settings = UserSettings(user_id=user.id)
             db_session.add(settings)
@@ -2538,7 +2661,10 @@ def edit_user_settings(user_id):
                 if primary_account_id in accessible_account_ids:
                     settings.primary_account_id = primary_account_id
                 else:
-                    flash(f"User '{user.username}' doesn't have access to the selected account.", "error")
+                    flash(
+                        f"User '{user.username}' doesn't have access to the selected account.",
+                        "error",
+                    )
                     return render_template(
                         "edit_user_settings.html",
                         settings=settings,
@@ -2580,7 +2706,9 @@ def edit_user_settings(user_id):
             settings.transaction_preferences = transaction_prefs
 
             db_session.commit()
-            flash(f"Settings updated successfully for user '{user.username}'!", "success")
+            flash(
+                f"Settings updated successfully for user '{user.username}'!", "success"
+            )
             return redirect(url_for("admin_users"))
 
         return render_template(
@@ -2797,121 +2925,171 @@ def edit_account(account_id):
 
         # Get accessible accounts for this user (respects account restrictions)
         accessible_accounts = get_user_accessible_accounts(user, db_session)
-        
+
         # Find the specific account
         account = None
         for acc in accessible_accounts:
             if acc.id == account_id:
                 account = acc
                 break
-        
+
         if not account:
             flash("Account not found or access denied.", "error")
             return redirect(url_for("accounts"))
 
         # Get the mercury account for display
-        mercury_account = db_session.query(MercuryAccount).filter_by(id=account.mercury_account_id).first()
+        mercury_account = (
+            db_session.query(MercuryAccount)
+            .filter_by(id=account.mercury_account_id)
+            .first()
+        )
 
         if request.method == "POST":
             # Handle current separate deposit receipt requirements
-            account.receipt_required_deposits = request.form.get("receipt_required_deposits", "none")
-            
-            threshold_deposits_str = request.form.get("receipt_threshold_deposits", "").strip()
-            if account.receipt_required_deposits == "threshold" and threshold_deposits_str:
+            account.receipt_required_deposits = request.form.get(
+                "receipt_required_deposits", "none"
+            )
+
+            threshold_deposits_str = request.form.get(
+                "receipt_threshold_deposits", ""
+            ).strip()
+            if (
+                account.receipt_required_deposits == "threshold"
+                and threshold_deposits_str
+            ):
                 try:
                     account.receipt_threshold_deposits = float(threshold_deposits_str)
                 except ValueError:
                     flash("Invalid deposit receipt threshold amount.", "error")
-                    return render_template("edit_account.html", account=account, mercury_account=mercury_account)
+                    return render_template(
+                        "edit_account.html",
+                        account=account,
+                        mercury_account=mercury_account,
+                    )
             else:
                 account.receipt_threshold_deposits = None
 
             # Handle current separate charge receipt requirements
-            account.receipt_required_charges = request.form.get("receipt_required_charges", "none")
-            
-            threshold_charges_str = request.form.get("receipt_threshold_charges", "").strip()
-            if account.receipt_required_charges == "threshold" and threshold_charges_str:
+            account.receipt_required_charges = request.form.get(
+                "receipt_required_charges", "none"
+            )
+
+            threshold_charges_str = request.form.get(
+                "receipt_threshold_charges", ""
+            ).strip()
+            if (
+                account.receipt_required_charges == "threshold"
+                and threshold_charges_str
+            ):
                 try:
                     account.receipt_threshold_charges = float(threshold_charges_str)
                 except ValueError:
                     flash("Invalid charge receipt threshold amount.", "error")
-                    return render_template("edit_account.html", account=account, mercury_account=mercury_account)
+                    return render_template(
+                        "edit_account.html",
+                        account=account,
+                        mercury_account=mercury_account,
+                    )
             else:
                 account.receipt_threshold_charges = None
 
             # Handle exclude from reports setting
-            account.exclude_from_reports = 'exclude_from_reports' in request.form
+            account.exclude_from_reports = "exclude_from_reports" in request.form
 
             db_session.commit()
             flash("Account updated successfully!", "success")
             return redirect(url_for("accounts"))
 
-        return render_template("edit_account.html", account=account, mercury_account=mercury_account)
+        return render_template(
+            "edit_account.html", account=account, mercury_account=mercury_account
+        )
     finally:
         db_session.close()
 
 
-@app.route('/api/transaction/<string:transaction_id>/attachments')
+@app.route("/api/transaction/<string:transaction_id>/attachments")
 @login_required
 def get_transaction_attachments(transaction_id):
     """Get attachments for a specific transaction."""
     try:
         db_session = Session()
-        
+
         # Get the current user from the session to avoid DetachedInstanceError
         user = get_current_user_in_session(db_session)
         if not user:
-            return jsonify({'error': 'User not found'}), 401
-        
+            return jsonify({"error": "User not found"}), 401
+
         # Get the transaction first
-        transaction = db_session.query(Transaction).filter(Transaction.id == transaction_id).first()
+        transaction = (
+            db_session.query(Transaction)
+            .filter(Transaction.id == transaction_id)
+            .first()
+        )
         if not transaction:
-            return jsonify({'error': 'Transaction not found'}), 404
-        
+            return jsonify({"error": "Transaction not found"}), 404
+
         # Check if user has access to this transaction's account
         user_accounts = get_user_accessible_accounts(user, db_session)
         account_ids = [acc.id for acc in user_accounts]
-        
+
         if transaction.account_id not in account_ids:
-            return jsonify({'error': 'Access denied'}), 403
-        
+            return jsonify({"error": "Access denied"}), 403
+
         # Get attachments for the transaction
-        attachments = db_session.query(TransactionAttachment).filter(
-            TransactionAttachment.transaction_id == transaction_id
-        ).all()
-        
+        attachments = (
+            db_session.query(TransactionAttachment)
+            .filter(TransactionAttachment.transaction_id == transaction_id)
+            .all()
+        )
+
         # Convert to JSON format
         attachments_data = []
         for attachment in attachments:
-            attachments_data.append({
-                'id': attachment.id,
-                'filename': attachment.filename,
-                'content_type': attachment.content_type,
-                'file_size': attachment.file_size,
-                'file_size_formatted': attachment.file_size_formatted,
-                'description': attachment.description,
-                'mercury_url': attachment.mercury_url,
-                'thumbnail_url': attachment.thumbnail_url,
-                'upload_date': attachment.upload_date.isoformat() if attachment.upload_date else None,
-                'url_expires_at': attachment.url_expires_at.isoformat() if attachment.url_expires_at else None,
-                'is_url_expired': attachment.is_url_expired,
-                'is_image': attachment.is_image,
-                'is_pdf': attachment.is_pdf,
-                'file_extension': attachment.file_extension,
-                'created_at': attachment.created_at.isoformat() if attachment.created_at else None,
-            })
-        
-        return jsonify({
-            'transaction_id': transaction_id,
-            'attachments': attachments_data,
-            'count': len(attachments_data)
-        })
-        
+            attachments_data.append(
+                {
+                    "id": attachment.id,
+                    "filename": attachment.filename,
+                    "content_type": attachment.content_type,
+                    "file_size": attachment.file_size,
+                    "file_size_formatted": attachment.file_size_formatted,
+                    "description": attachment.description,
+                    "mercury_url": attachment.mercury_url,
+                    "thumbnail_url": attachment.thumbnail_url,
+                    "upload_date": (
+                        attachment.upload_date.isoformat()
+                        if attachment.upload_date
+                        else None
+                    ),
+                    "url_expires_at": (
+                        attachment.url_expires_at.isoformat()
+                        if attachment.url_expires_at
+                        else None
+                    ),
+                    "is_url_expired": attachment.is_url_expired,
+                    "is_image": attachment.is_image,
+                    "is_pdf": attachment.is_pdf,
+                    "file_extension": attachment.file_extension,
+                    "created_at": (
+                        attachment.created_at.isoformat()
+                        if attachment.created_at
+                        else None
+                    ),
+                }
+            )
+
+        return jsonify(
+            {
+                "transaction_id": transaction_id,
+                "attachments": attachments_data,
+                "count": len(attachments_data),
+            }
+        )
+
     except Exception as e:
         logger.error("Error fetching transaction attachments: %s", e)
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({"error": "Internal server error"}), 500
     finally:
-        if 'db_session' in locals():
+        if "db_session" in locals():
             db_session.close()
 
 

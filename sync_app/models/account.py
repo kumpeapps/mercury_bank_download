@@ -10,6 +10,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from .base import Base
+from datetime import datetime
 
 
 class Account(Base):
@@ -95,29 +96,94 @@ class Account(Base):
 
     # Relationship to mercury account group
     mercury_account = relationship("MercuryAccount", back_populates="accounts")
+    
+    # Relationship to receipt policies
+    receipt_policies = relationship("ReceiptPolicy", back_populates="account", cascade="all, delete-orphan", lazy="dynamic")
 
-    def is_receipt_required_for_amount(self, amount):
+    def is_receipt_required_for_amount(self, amount, transaction_date=None):
         """
         Check if a receipt is required for a given transaction amount.
         
         Uses separate rules for deposits (positive amounts) and charges (negative amounts).
+        If transaction_date is provided, uses the policy in effect at that time.
 
         Args:
             amount (float): Transaction amount to check
+            transaction_date (datetime, optional): Date when transaction was posted
 
         Returns:
             bool: True if receipt is required, False otherwise
         """
-        # Determine if this is a deposit or charge
-        is_deposit = amount > 0
+        # If no transaction_date provided, use current policy (from account)
+        if transaction_date is None:
+            # Determine if this is a deposit or charge
+            is_deposit = amount > 0
+            
+            # Get the appropriate receipt requirement setting
+            if is_deposit:
+                receipt_required = self.receipt_required_deposits
+                receipt_threshold = self.receipt_threshold_deposits
+            else:
+                receipt_required = self.receipt_required_charges
+                receipt_threshold = self.receipt_threshold_charges
+            
+            # Apply the logic
+            if receipt_required == "none":
+                return False
+            elif receipt_required == "always":
+                return True
+            elif receipt_required == "threshold":
+                return receipt_threshold is not None and abs(amount) >= receipt_threshold
+            return False
         
-        # Get the appropriate receipt requirement setting
-        if is_deposit:
-            receipt_required = self.receipt_required_deposits
-            receipt_threshold = self.receipt_threshold_deposits
+        # Find the policy in effect at the transaction date
+        # Using self.receipt_policies might not work in SQLAlchemy session expired context,
+        # so we use an explicit query
+        from sqlalchemy import and_, or_
+        from sqlalchemy.orm import Session
+        session = Session.object_session(self)
+        
+        if session is None:
+            # If no session is available, fall back to current account settings
+            return self.is_receipt_required_for_amount(amount)
+            
+        # Import here to avoid circular imports
+        from .receipt_policy import ReceiptPolicy
+        
+        # Find the policy in effect at transaction_date
+        policy = (
+            session.query(ReceiptPolicy)
+            .filter(
+                ReceiptPolicy.account_id == self.id,
+                ReceiptPolicy.start_date <= transaction_date,
+                or_(
+                    ReceiptPolicy.end_date.is_(None),
+                    ReceiptPolicy.end_date >= transaction_date
+                )
+            )
+            .order_by(ReceiptPolicy.start_date.desc())
+            .first()
+        )
+        
+        # If no policy found, fall back to current account settings
+        if policy is None:
+            # Use current account settings as fallback
+            is_deposit = amount > 0
+            if is_deposit:
+                receipt_required = self.receipt_required_deposits
+                receipt_threshold = self.receipt_threshold_deposits
+            else:
+                receipt_required = self.receipt_required_charges
+                receipt_threshold = self.receipt_threshold_charges
         else:
-            receipt_required = self.receipt_required_charges
-            receipt_threshold = self.receipt_threshold_charges
+            # Use policy settings
+            is_deposit = amount > 0
+            if is_deposit:
+                receipt_required = policy.receipt_required_deposits
+                receipt_threshold = policy.receipt_threshold_deposits
+            else:
+                receipt_required = policy.receipt_required_charges
+                receipt_threshold = policy.receipt_threshold_charges
         
         # Apply the logic
         if receipt_required == "none":
@@ -128,19 +194,20 @@ class Account(Base):
             return receipt_threshold is not None and abs(amount) >= receipt_threshold
         return False
 
-    def get_receipt_status_for_transaction(self, amount, has_attachments):
+    def get_receipt_status_for_transaction(self, amount, has_attachments, transaction_date=None):
         """
         Get the receipt status for display purposes.
 
         Args:
             amount (float): Transaction amount
             has_attachments (bool): Whether transaction has attachments
+            transaction_date (datetime, optional): When the transaction was posted
 
         Returns:
             str: Status - 'required_present' (green), 'required_missing' (red),
                  'optional_present' (blue), 'optional_missing' (blank)
         """
-        required = self.is_receipt_required_for_amount(amount)
+        required = self.is_receipt_required_for_amount(amount, transaction_date)
 
         if required and has_attachments:
             return "required_present"  # Green
@@ -159,3 +226,76 @@ class Account(Base):
             str: A formatted string showing the account ID, name, and balance
         """
         return f"<Account(id='{self.id}', name='{self.name}', balance={self.balance})>"
+
+    def update_receipt_policy(self, receipt_required_deposits, receipt_threshold_deposits, 
+                              receipt_required_charges, receipt_threshold_charges):
+        """
+        Update receipt policy settings and create a historical record.
+        
+        This method should be called whenever receipt settings are changed to maintain
+        a history of policies that apply to different time periods.
+        
+        Args:
+            receipt_required_deposits (str): Receipt requirement for deposits
+            receipt_threshold_deposits (float): Threshold amount for deposits
+            receipt_required_charges (str): Receipt requirement for charges
+            receipt_threshold_charges (float): Threshold amount for charges
+            
+        Returns:
+            None
+        """
+        from sqlalchemy.orm import Session
+        session = Session.object_session(self)
+        
+        if session is None:
+            raise ValueError("Cannot update receipt policy: no active database session")
+            
+        # Import ReceiptPolicy class
+        from .receipt_policy import ReceiptPolicy
+        
+        # Get the current active policy (if any)
+        current_policy = (
+            session.query(ReceiptPolicy)
+            .filter(
+                ReceiptPolicy.account_id == self.id,
+                ReceiptPolicy.end_date.is_(None)
+            )
+            .order_by(ReceiptPolicy.start_date.desc())
+            .first()
+        )
+        
+        # Check if there are any changes to receipt settings (and a policy already exists)
+        if current_policy and (
+                self.receipt_required_deposits == receipt_required_deposits and
+                self.receipt_threshold_deposits == receipt_threshold_deposits and
+                self.receipt_required_charges == receipt_required_charges and
+                self.receipt_threshold_charges == receipt_threshold_charges):
+            # No changes, no need to create a new policy
+            return
+            
+        # If there's a current policy, set its end date to now
+        now = datetime.now()
+        if current_policy:
+            current_policy.end_date = now
+            
+        # Create a new policy with the updated settings
+        new_policy = ReceiptPolicy(
+            account_id=self.id,
+            start_date=now,
+            end_date=None,  # Active policy
+            receipt_required_deposits=receipt_required_deposits,
+            receipt_threshold_deposits=receipt_threshold_deposits,
+            receipt_required_charges=receipt_required_charges,
+            receipt_threshold_charges=receipt_threshold_charges
+        )
+        
+        # Update the account's current settings
+        self.receipt_required_deposits = receipt_required_deposits
+        self.receipt_threshold_deposits = receipt_threshold_deposits
+        self.receipt_required_charges = receipt_required_charges
+        self.receipt_threshold_charges = receipt_threshold_charges
+        
+        # Add the new policy to the session
+        session.add(new_policy)
+        
+        # The session.commit() should be called by the caller
