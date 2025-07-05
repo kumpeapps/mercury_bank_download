@@ -1,0 +1,45 @@
+# Updated Docker Compose Configuration for Reverse Proxy Support
+# Place these environment variables in your docker-compose.yml or docker-compose.override.yml
+
+x-common-variables: &common-variables
+  DATABASE_URL: mysql+pymysql://mercury_user:mercury_password@mysql:3306/mercury_bank
+  SYNC_DAYS_BACK: 30
+  SYNC_INTERVAL_MINUTES: 2
+  RUN_ONCE: false
+  SECRET_KEY: oA>a@Th"R)~KbPm._Hl)AQwf!"@;sK5>slS1D5L
+  # Added for reverse proxy support
+  SECURE_COOKIES: "true"
+  PREFERRED_URL_SCHEME: "https"
+  FLASK_DEBUG: "false"
+  USERS_EXTERNALLY_MANAGED: false
+
+services:
+  # Other services remain unchanged
+
+  # Web application service
+  web-app:
+    # image: "justinkumpe/mercury-bank-sync:latest-alpha"
+    build: ./web_app
+    environment: *common-variables
+    
+    ports:
+      - "5001:5000"
+    
+    volumes:
+      - ./web_app/logs:/app/logs
+    
+    restart: unless-stopped
+    
+    networks:
+      - mercury-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# Other configuration remains unchanged
