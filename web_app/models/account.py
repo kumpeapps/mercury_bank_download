@@ -238,7 +238,7 @@ class Account(Base):
         return f"<Account(id='{self.id}', name='{self.name}', balance={self.balance})>"
         
     def update_receipt_policy(self, receipt_required_deposits, receipt_threshold_deposits, 
-                              receipt_required_charges, receipt_threshold_charges):
+                              receipt_required_charges, receipt_threshold_charges, start_date=None):
         """
         Update receipt policy settings and create a historical record.
         
@@ -250,6 +250,8 @@ class Account(Base):
             receipt_threshold_deposits (float): Threshold amount for deposits
             receipt_required_charges (str): Receipt requirement for charges
             receipt_threshold_charges (float): Threshold amount for charges
+            start_date (datetime, optional): The date when the policy should take effect.
+                                            If None, the policy will take effect immediately.
             
         Returns:
             None
@@ -283,15 +285,18 @@ class Account(Base):
             # No changes, no need to create a new policy
             return
             
-        # If there's a current policy, set its end date to now
+        # If there's a current policy, set its end date to start date of new policy
         now = datetime.now()
+        effective_date = start_date if start_date else now
+        
         if current_policy:
-            current_policy.end_date = now
+            # Only end the current policy when the new policy takes effect
+            current_policy.end_date = effective_date
             
         # Create a new policy with the updated settings
         new_policy = ReceiptPolicy(
             account_id=self.id,
-            start_date=now,
+            start_date=effective_date,
             end_date=None,  # Active policy
             receipt_required_deposits=receipt_required_deposits,
             receipt_threshold_deposits=receipt_threshold_deposits,
@@ -299,7 +304,9 @@ class Account(Base):
             receipt_threshold_charges=receipt_threshold_charges
         )
         
-        # Update the account's current settings
+        # Update the account's current settings 
+        # Note: We always update these fields immediately so they're reflected in the UI,
+        # even though the actual policy might take effect at a future date
         self.receipt_required_deposits = receipt_required_deposits
         self.receipt_threshold_deposits = receipt_threshold_deposits
         self.receipt_required_charges = receipt_required_charges

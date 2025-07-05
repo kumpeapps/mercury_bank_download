@@ -2949,6 +2949,39 @@ def edit_account(account_id):
             receipt_required_deposits = request.form.get("receipt_required_deposits", "none")
             receipt_required_charges = request.form.get("receipt_required_charges", "none")
             
+            # Check if this is a future-dated policy change
+            use_future_date = "use_future_date" in request.form
+            start_date = None
+            
+            if use_future_date:
+                future_start_date_str = request.form.get("future_start_date", "")
+                if future_start_date_str:
+                    try:
+                        # Parse the date string from the form
+                        start_date = datetime.strptime(future_start_date_str, "%Y-%m-%d")
+                        
+                        # Set the time to beginning of day to ensure consistent behavior
+                        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                        
+                        # Ensure the date is not in the past
+                        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                        if start_date < today:
+                            flash("Start date cannot be in the past.", "error")
+                            return render_template(
+                                "edit_account.html",
+                                account=account,
+                                mercury_account=mercury_account,
+                                today_date=datetime.now().strftime('%Y-%m-%d')
+                            )
+                    except ValueError:
+                        flash("Invalid start date format.", "error")
+                        return render_template(
+                            "edit_account.html",
+                            account=account,
+                            mercury_account=mercury_account,
+                            today_date=datetime.now().strftime('%Y-%m-%d')
+                        )
+            
             # Parse threshold values
             threshold_deposits_str = request.form.get("receipt_threshold_deposits", "").strip()
             threshold_deposits = None
@@ -2981,18 +3014,29 @@ def edit_account(account_id):
                 receipt_required_deposits=receipt_required_deposits,
                 receipt_threshold_deposits=threshold_deposits,
                 receipt_required_charges=receipt_required_charges,
-                receipt_threshold_charges=threshold_charges
+                receipt_threshold_charges=threshold_charges,
+                start_date=start_date
             )
 
             # Handle exclude from reports setting
             account.exclude_from_reports = "exclude_from_reports" in request.form
 
             db_session.commit()
-            flash("Account updated successfully and receipt policy history updated!", "success")
+            
+            # Customize success message based on whether this is a future change
+            if use_future_date and start_date:
+                formatted_date = start_date.strftime("%B %d, %Y")
+                flash(f"Account updated and receipt policy scheduled to change on {formatted_date}!", "success")
+            else:
+                flash("Account updated successfully and receipt policy updated immediately!", "success")
+                
             return redirect(url_for("accounts"))
 
         return render_template(
-            "edit_account.html", account=account, mercury_account=mercury_account
+            "edit_account.html", 
+            account=account, 
+            mercury_account=mercury_account,
+            today_date=datetime.now().strftime('%Y-%m-%d')
         )
     finally:
         db_session.close()
