@@ -5,14 +5,25 @@ A comprehensive platform for Mercury Bank data synchronization and management, c
 1. **Sync Service** (`sync_app/`) - Automated data synchronization from Mercury Bank API
 2. **Web Interface** (`web_app/`) - User-friendly web dashboard for data management and reporting
 
-## 🎉 What's New in v2.0.1
+## 🎉 What's New in v2.1.0
 
+- **🏦 Complete Budget Management System** - Create, edit, and track budgets with detailed progress monitoring
+- **📊 Advanced Budget Reports** - Interactive budget reports with real-time progress tracking and variance analysis
+- **📈 Budget Analytics** - Visual budget vs. actual spending charts integrated into reports dashboard
+- **🎯 Category-Based Budgeting** - Set spending limits by transaction categories with intelligent sub-category support
+- **📅 Monthly Budget Planning** - Create monthly budgets with easy copy-to-next-month functionality
+- **🔄 Smart Budget Progress** - Real-time budget progress calculations with color-coded status indicators
+- **🏢 Multi-Account Budget Support** - Create budgets spanning multiple Mercury accounts within a group
+- **👥 Role-Based Budget Access** - Budget management restricted to users with appropriate permissions
+
+### Previous Updates
+
+#### v2.0.1
 - **Enhanced Chart Controls** - Reports now show main categories by default with toggle for sub-categories
 - **Improved User Experience** - Cleaner, simplified chart views with drill-down capability
 - **Dynamic Chart Updates** - One-click toggle between category and sub-category views
 
-### Previous Updates (v2.0.0)
-
+#### v2.0.0
 - **Mercury Account User Management** - Add/remove user access to Mercury accounts through CLI
 - **Enhanced CLI Interface** - Improved command-line interface with additional management features
 - **Comprehensive Testing** - Complete test suite with 38 test cases
@@ -64,6 +75,11 @@ mercury_bank_download/
 - 📈 **Reporting & Analytics** - Interactive charts with category/sub-category toggle, trends, and financial insights
 - 🎯 **Default Account Settings** - User-customizable default views
 - 📱 **Responsive Design** - Works on desktop, tablet, and mobile devices
+- 🏦 **Complete Budget Management** - Create, edit, and track monthly budgets with detailed progress monitoring
+- 📊 **Budget Analytics** - Visual budget vs. actual spending analysis with real-time progress tracking
+- 💸 **Category-Based Budgeting** - Set spending limits by transaction categories with sub-category support
+- 📅 **Multi-Account Budget Support** - Create budgets spanning multiple Mercury accounts within a group
+- 🔄 **Smart Budget Tracking** - Automatic progress calculations with color-coded status indicators
 
 ## 🚀 Quick Start
 
@@ -293,6 +309,36 @@ Users ←→ UserMercuryAccount ←→ MercuryAccounts
 |-------|------|-------------|
 | `user_id` | VARCHAR(255) FK | Reference to users |
 | `mercury_account_id` | VARCHAR(255) FK | Reference to mercury_accounts |
+
+#### `budgets` - Budget Management
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | INTEGER PK | Unique budget identifier |
+| `name` | VARCHAR(255) | Budget display name |
+| `mercury_account_id` | INTEGER FK | Reference to mercury_accounts |
+| `budget_month` | DATE | Budget month (YYYY-MM-01 format) |
+| `is_active` | BOOLEAN | Budget active status |
+| `created_by_user_id` | INTEGER FK | Reference to users (budget creator) |
+| `created_at` | TIMESTAMP | Record creation time |
+| `updated_at` | TIMESTAMP | Last update time |
+
+#### `budget_categories` - Budget Category Limits
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | INTEGER PK | Unique budget category identifier |
+| `budget_id` | INTEGER FK | Reference to budgets |
+| `category_name` | VARCHAR(255) | Transaction category name |
+| `budgeted_amount` | FLOAT | Allocated budget amount for category |
+| `is_active` | BOOLEAN | Category active status |
+| `created_at` | TIMESTAMP | Record creation time |
+| `updated_at` | TIMESTAMP | Last update time |
+
+#### `budget_accounts` - Budget Account Associations
+| Field | Type | Description |
+|-------|------|-------------|
+| `budget_id` | INTEGER FK | Reference to budgets |
+| `account_id` | VARCHAR(255) FK | Reference to accounts |
+| `created_at` | TIMESTAMP | Association creation time |
 
 ## 🧪 Testing
 
@@ -748,7 +794,18 @@ docker-compose logs mercury-sync | grep "SQLAlchemy"
 
 ## 🆕 What's New
 
-### Version 2.0.1+ Features
+### Version 2.1.0 Features
+
+- ✅ **Complete Budget Management System** - Create, edit, and track monthly budgets with detailed progress monitoring
+- ✅ **Advanced Budget Reports** - Interactive budget reports with real-time progress tracking and variance analysis
+- ✅ **Budget Analytics Integration** - Visual budget vs. actual spending charts in reports dashboard
+- ✅ **Category-Based Budgeting** - Set spending limits by transaction categories with intelligent sub-category support
+- ✅ **Multi-Account Budget Support** - Create budgets spanning multiple Mercury accounts within a group
+- ✅ **Smart Budget Progress Tracking** - Real-time calculations with color-coded status indicators
+- ✅ **Role-Based Budget Access** - Budget management restricted to users with appropriate permissions
+- ✅ **Budget Copy Functionality** - Easy month-to-month budget planning with one-click copying
+
+### Previous Version Features
 
 - ✅ **Multi-Account Architecture** - Manage multiple Mercury Bank accounts
 - ✅ **User Management System** - Role-based access control
