@@ -3828,14 +3828,41 @@ def budget_reports():
         
         # Calculate detailed report data for each budget
         budgets_with_reports = []
+        total_income = 0
+        total_expenses = 0
+        
         for budget in budget_list:
             progress = calculate_budget_progress(db_session, budget)
             report_data = get_budget_report_data(db_session, budget)
+            
+            # Calculate income vs expenses for this budget
+            budget_income = 0
+            budget_expenses = 0
+            
+            for category_data in report_data:
+                if category_data.get('is_income', False):
+                    budget_income += category_data['total_amount']
+                else:
+                    budget_expenses += category_data['total_amount']
+            
+            total_income += budget_income
+            total_expenses += budget_expenses
+            
             budgets_with_reports.append({
                 'budget': budget,
                 'progress': progress,
-                'report_data': report_data
+                'report_data': report_data,
+                'budget_income': budget_income,
+                'budget_expenses': budget_expenses
             })
+        
+        # Calculate overall financial summary
+        net_income = total_income - total_expenses
+        financial_summary = {
+            'total_income': total_income,
+            'total_expenses': total_expenses,
+            'net_income': net_income
+        }
         
         # Get available months for filter dropdown
         from datetime import datetime
@@ -4200,10 +4227,13 @@ def copy_budget(budget_id):
             return redirect(url_for("budgets"))
         
         # Get new month from form
-        new_month = request.form.get("new_month")
+        new_month = request.form.get("target_month")
         if not new_month:
             flash("New budget month is required.", "error")
             return redirect(url_for("budgets"))
+        
+        # Get target name from form (optional)
+        target_name = request.form.get("target_name")
         
         # Parse new budget month
         try:
@@ -4225,8 +4255,9 @@ def copy_budget(budget_id):
             return redirect(url_for("budgets"))
         
         # Create new budget
+        budget_name = target_name if target_name else f"{source_budget.name} (Copy)"
         new_budget = Budget(
-            name=f"{source_budget.name} (Copy)",
+            name=budget_name,
             mercury_account_id=source_budget.mercury_account_id,
             budget_month=new_budget_date,
             created_by_user_id=current_user.id
