@@ -3,6 +3,16 @@
 {% block title %}Reports - {{ app_name }}{% endblock %}
 
 {% block content %}
+<style>
+.form-check-group {
+    max-height: 100px;
+    overflow-y: auto;
+}
+.form-check-group .form-check {
+    margin-bottom: 0.25rem;
+}
+</style>
+
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2"><i class="fas fa-chart-bar me-2"></i>Financial Reports</h1>
 </div>
@@ -23,15 +33,19 @@
                 </select>
             </div>
             <div class="col-md-2">
-                <label for="account_id" class="form-label">Bank Account</label>
-                <select class="form-select" id="account_id" name="account_id">
-                    <option value="">All Accounts</option>
+                <label class="form-label">Bank Account</label>
+                <div class="form-check-group" style="max-height: 120px; overflow-y: auto;">
                     {% for account in accounts %}
-                    <option value="{{ account.id }}" {% if current_account_id == account.id %}selected{% endif %}>
-                        {{ account.nickname or account.name }}
-                    </option>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="account_id" value="{{ account.id }}" 
+                               id="account_{{ account.id }}" 
+                               {% if account.id|string in current_account_ids %}checked{% endif %}>
+                        <label class="form-check-label" for="account_{{ account.id }}">
+                            {{ account.nickname or account.name }}
+                        </label>
+                    </div>
                     {% endfor %}
-                </select>
+                </div>
             </div>
             <div class="col-md-2">
                 <label for="month" class="form-label">Month</label>
@@ -69,7 +83,11 @@
                                id="status_{{ status }}" 
                                {% if status in current_status %}checked{% endif %}>
                         <label class="form-check-label" for="status_{{ status }}">
-                            {{ 'Posted' if status == 'sent' else status.title() }}
+                            {% if status == 'posted' %}
+                                Posted
+                            {% else %}
+                                {{ status.title() }}
+                            {% endif %}
                         </label>
                     </div>
                     {% endfor %}
@@ -103,7 +121,7 @@
                 <div class="d-flex gap-2">
                     <a href="{{ url_for('reports', 
                                mercury_account_id=current_mercury_account_id,
-                               account_id=current_account_id,
+                               account_id=current_account_ids,
                                category=current_category,
                                month=current_month,
                                status=current_status,
@@ -113,7 +131,7 @@
                     </a>
                     <a href="{{ url_for('reports', 
                                mercury_account_id=current_mercury_account_id,
-                               account_id=current_account_id,
+                               account_id=current_account_ids,
                                category=current_category,
                                month=current_month,
                                status=current_status,
@@ -387,7 +405,10 @@ let expenseChart = null;
 
 // Load budget chart
 function loadBudgetChart(months = 12) {
-    document.getElementById('budgetLoading').style.display = 'block';
+    // Reset loading spinner and hide chart
+    const budgetLoading = document.getElementById('budgetLoading');
+    budgetLoading.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading budget data...</p>';
+    budgetLoading.style.display = 'block';
     document.getElementById('budgetChart').style.display = 'none';
     
     const includePending = document.getElementById('includePending').checked;
@@ -395,30 +416,45 @@ function loadBudgetChart(months = 12) {
     const mercuryAccountId = document.getElementById('mercury_account_id').value;
     const monthFilter = document.getElementById('month').value;
     
+    // Collect selected account IDs from checkboxes
+    const selectedAccounts = [];
+    const accountCheckboxes = document.querySelectorAll('input[name="account_id"]:checked');
+    accountCheckboxes.forEach(checkbox => {
+        selectedAccounts.push(checkbox.value);
+    });
+    
+    console.log('loadBudgetChart - Selected accounts:', selectedAccounts);
+    console.log('loadBudgetChart - Mercury account ID:', mercuryAccountId);
+    
     let url = `/api/budget_data?months=${months}&include_pending=${includePending}&show_subcategories=${showSubcategories}`;
     if (mercuryAccountId) {
         url += `&mercury_account_id=${mercuryAccountId}`;
+    }
+    if (selectedAccounts.length > 0) {
+        url += `&account_ids=${selectedAccounts.join(',')}`;
     }
     if (monthFilter) {
         url += `&month=${monthFilter}`;
     }
     
+    console.log('loadBudgetChart - Final URL:', url);
+    
     fetch(url)
         .then(response => response.json())
         .then(data => {
-            document.getElementById('budgetLoading').style.display = 'none';
+            budgetLoading.style.display = 'none';
+            if (!data || !data.labels || data.labels.length === 0 || !data.datasets || data.datasets.length === 0) {
+                document.getElementById('budgetChart').style.display = 'none';
+                budgetLoading.innerHTML = '<div class="text-center text-warning"><i class="fas fa-info-circle"></i><p>No data for this filter</p></div>';
+                budgetLoading.style.display = 'block';
+                return;
+            }
             document.getElementById('budgetChart').style.display = 'block';
-            
             const ctx = document.getElementById('budgetChart').getContext('2d');
-            
             if (budgetChart) {
                 budgetChart.destroy();
             }
-            
-            const chartTitle = showSubcategories ? 
-                'Monthly Spending by Sub-category' : 
-                'Monthly Spending by Category';
-            
+            const chartTitle = showSubcategories ? 'Monthly Spending by Sub-category' : 'Monthly Spending by Category';
             budgetChart = new Chart(ctx, {
                 type: 'line',
                 data: data,
@@ -459,14 +495,18 @@ function loadBudgetChart(months = 12) {
         })
         .catch(error => {
             console.error('Error loading budget chart:', error);
-            document.getElementById('budgetLoading').innerHTML = 
-                '<div class="text-center text-danger"><i class="fas fa-exclamation-triangle"></i><p>Error loading chart data</p></div>';
+            budgetLoading.innerHTML = '<div class="text-center text-danger"><i class="fas fa-exclamation-triangle"></i><p>Error loading chart data</p></div>';
+            budgetLoading.style.display = 'block';
+            document.getElementById('budgetChart').style.display = 'none';
         });
 }
 
 // Load expense chart
 function loadExpenseChart(months = 3) {
-    document.getElementById('expenseLoading').style.display = 'block';
+    // Reset loading spinner and hide chart
+    const expenseLoading = document.getElementById('expenseLoading');
+    expenseLoading.innerHTML = '<div class="spinner-border text-success" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading expense data...</p>';
+    expenseLoading.style.display = 'block';
     document.getElementById('expenseChart').style.display = 'none';
     
     const includePending = document.getElementById('includePending').checked;
@@ -474,30 +514,45 @@ function loadExpenseChart(months = 3) {
     const mercuryAccountId = document.getElementById('mercury_account_id').value;
     const monthFilter = document.getElementById('month').value;
     
+    // Collect selected account IDs from checkboxes
+    const selectedAccounts = [];
+    const accountCheckboxes = document.querySelectorAll('input[name="account_id"]:checked');
+    accountCheckboxes.forEach(checkbox => {
+        selectedAccounts.push(checkbox.value);
+    });
+    
+    console.log('loadExpenseChart - Selected accounts:', selectedAccounts);
+    console.log('loadExpenseChart - Mercury account ID:', mercuryAccountId);
+    
     let url = `/api/expense_breakdown?months=${months}&include_pending=${includePending}&show_subcategories=${showSubcategories}`;
     if (mercuryAccountId) {
         url += `&mercury_account_id=${mercuryAccountId}`;
+    }
+    if (selectedAccounts.length > 0) {
+        url += `&account_ids=${selectedAccounts.join(',')}`;
     }
     if (monthFilter) {
         url += `&month=${monthFilter}`;
     }
     
+    console.log('loadExpenseChart - Final URL:', url);
+    
     fetch(url)
         .then(response => response.json())
         .then(data => {
-            document.getElementById('expenseLoading').style.display = 'none';
+            expenseLoading.style.display = 'none';
+            if (!data || !data.labels || data.labels.length === 0 || !data.datasets || data.datasets.length === 0 || (data.datasets[0] && data.datasets[0].data && data.datasets[0].data.length === 0)) {
+                document.getElementById('expenseChart').style.display = 'none';
+                expenseLoading.innerHTML = '<div class="text-center text-warning"><i class="fas fa-info-circle"></i><p>No data for this filter</p></div>';
+                expenseLoading.style.display = 'block';
+                return;
+            }
             document.getElementById('expenseChart').style.display = 'block';
-            
             const ctx = document.getElementById('expenseChart').getContext('2d');
-            
             if (expenseChart) {
                 expenseChart.destroy();
             }
-            
-            const chartTitle = showSubcategories ? 
-                'Expense Distribution by Sub-category' : 
-                'Expense Distribution by Category';
-            
+            const chartTitle = showSubcategories ? 'Expense Distribution by Sub-category' : 'Expense Distribution by Category';
             expenseChart = new Chart(ctx, {
                 type: 'doughnut',
                 data: data,
@@ -529,8 +584,9 @@ function loadExpenseChart(months = 3) {
         })
         .catch(error => {
             console.error('Error loading expense chart:', error);
-            document.getElementById('expenseLoading').innerHTML = 
-                '<div class="text-center text-danger"><i class="fas fa-exclamation-triangle"></i><p>Error loading chart data</p></div>';
+            expenseLoading.innerHTML = '<div class="text-center text-danger"><i class="fas fa-exclamation-triangle"></i><p>Error loading chart data</p></div>';
+            expenseLoading.style.display = 'block';
+            document.getElementById('expenseChart').style.display = 'none';
         });
 }
 
@@ -607,6 +663,16 @@ document.getElementById('month').addEventListener('change', function() {
     loadExpenseChart(parseInt(expensePeriod));
 });
 
+// Event listeners for account checkboxes
+document.querySelectorAll('input[name="account_id"]').forEach(checkbox => {
+    checkbox.addEventListener('change', function() {
+        const budgetPeriod = document.querySelector('input[name="budgetPeriod"]:checked').value;
+        const expensePeriod = document.querySelector('input[name="expensePeriod"]:checked').value;
+        loadBudgetChart(parseInt(budgetPeriod));
+        loadExpenseChart(parseInt(expensePeriod));
+    });
+});
+
 // Event listeners for view type
 document.querySelectorAll('input[name="viewType"]').forEach(radio => {
     radio.addEventListener('change', function() {
@@ -618,13 +684,16 @@ document.querySelectorAll('input[name="viewType"]').forEach(radio => {
             const params = new URLSearchParams(window.location.search);
             params.set('view', 'table');
             const mercuryAccountId = document.getElementById('mercury_account_id').value;
-            const accountId = document.getElementById('account_id').value;
             const monthFilter = document.getElementById('month').value;
             const category = document.getElementById('category').value;
             if (mercuryAccountId) params.set('mercury_account_id', mercuryAccountId);
-            if (accountId) params.set('account_id', accountId);
             if (monthFilter) params.set('month', monthFilter);
             if (category) params.set('category', category);
+            // Add account filters (checkboxes)
+            const accountCheckboxes = document.querySelectorAll('input[name="account_id"]:checked');
+            accountCheckboxes.forEach(checkbox => {
+                params.append('account_id', checkbox.value);
+            });
             // Add status filters
             const statusCheckboxes = document.querySelectorAll('input[name="status"]:checked');
             statusCheckboxes.forEach(checkbox => {
@@ -639,13 +708,16 @@ document.querySelectorAll('input[name="viewType"]').forEach(radio => {
             const params = new URLSearchParams(window.location.search);
             params.set('view', 'charts');
             const mercuryAccountId = document.getElementById('mercury_account_id').value;
-            const accountId = document.getElementById('account_id').value;
             const monthFilter = document.getElementById('month').value;
             const category = document.getElementById('category').value;
             if (mercuryAccountId) params.set('mercury_account_id', mercuryAccountId);
-            if (accountId) params.set('account_id', accountId);
             if (monthFilter) params.set('month', monthFilter);
             if (category) params.set('category', category);
+            // Add account filters (checkboxes)
+            const accountCheckboxes = document.querySelectorAll('input[name="account_id"]:checked');
+            accountCheckboxes.forEach(checkbox => {
+                params.append('account_id', checkbox.value);
+            });
             // Add status filters
             const statusCheckboxes = document.querySelectorAll('input[name="status"]:checked');
             statusCheckboxes.forEach(checkbox => {
@@ -660,14 +732,17 @@ document.querySelectorAll('input[name="viewType"]').forEach(radio => {
 function exportData(format) {
     const params = new URLSearchParams();
     const mercuryAccountId = document.getElementById('mercury_account_id').value;
-    const accountId = document.getElementById('account_id').value;
     const monthFilter = document.getElementById('month').value;
     const category = document.getElementById('category').value;
     
     if (mercuryAccountId) params.set('mercury_account_id', mercuryAccountId);
-    if (accountId) params.set('account_id', accountId);
     if (monthFilter) params.set('month', monthFilter);
     if (category) params.set('category', category);
+    // Add account filters (checkboxes)
+    const accountCheckboxes = document.querySelectorAll('input[name="account_id"]:checked');
+    accountCheckboxes.forEach(checkbox => {
+        params.append('account_id', checkbox.value);
+    });
     // Add status filters
     const statusCheckboxes = document.querySelectorAll('input[name="status"]:checked');
     statusCheckboxes.forEach(checkbox => {

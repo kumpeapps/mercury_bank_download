@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+
+{% block title %}Budget Reports{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Budget Reports</h2>
+                <div>
+                    <a href="{{ url_for('budgets') }}" class="btn btn-outline-secondary me-2">
+                        <i class="fas fa-arrow-left"></i> Back to Budgets
+                    </a>
+                    {% if current_user.has_role('admin') or current_user.has_role('super-admin') %}
+                    <a href="{{ url_for('create_budget') }}" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Create Budget
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <form method="GET" class="row g-3">
+                        <div class="col-md-4">
+                            <label for="month" class="form-label">Month</label>
+                            <select class="form-select" id="month" name="month" onchange="this.form.submit()">
+                                {% for month in available_months %}
+                                <option value="{{ month.value }}" {% if month.value == month_filter %}selected{% endif %}>
+                                    {{ month.label }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="mercury_account_id" class="form-label">Mercury Account</label>
+                            <select class="form-select" id="mercury_account_id" name="mercury_account_id" onchange="this.form.submit()">
+                                <option value="">All Accounts</option>
+                                {% for account in mercury_accounts %}
+                                <option value="{{ account.id }}" {% if account.id == selected_mercury_account_id %}selected{% endif %}>
+                                    {{ account.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button type="submit" class="btn btn-outline-primary">
+                                <i class="fas fa-filter"></i> Apply Filters
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            {% if budgets %}
+            <!-- Financial Summary -->
+            {% if financial_summary %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-pie"></i> Financial Summary
+                        <span class="badge bg-info ms-2">{{ month_filter.strftime('%B %Y') if month_filter else 'All Time' }}</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="card border-success">
+                                <div class="card-body text-center">
+                                    <div class="d-flex align-items-center justify-content-center mb-2">
+                                        <i class="fas fa-arrow-up text-success me-2"></i>
+                                        <h6 class="mb-0 text-success">Total Income</h6>
+                                    </div>
+                                    <h4 class="text-success">${{ "{:,.2f}".format(financial_summary.total_income) }}</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card border-danger">
+                                <div class="card-body text-center">
+                                    <div class="d-flex align-items-center justify-content-center mb-2">
+                                        <i class="fas fa-arrow-down text-danger me-2"></i>
+                                        <h6 class="mb-0 text-danger">Total Expenses</h6>
+                                    </div>
+                                    <h4 class="text-danger">${{ "{:,.2f}".format(financial_summary.total_expenses) }}</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card border-{{ 'success' if financial_summary.net_income >= 0 else 'danger' }}">
+                                <div class="card-body text-center">
+                                    <div class="d-flex align-items-center justify-content-center mb-2">
+                                        <i class="fas fa-{{ 'plus' if financial_summary.net_income >= 0 else 'minus' }} text-{{ 'success' if financial_summary.net_income >= 0 else 'danger' }} me-2"></i>
+                                        <h6 class="mb-0 text-{{ 'success' if financial_summary.net_income >= 0 else 'danger' }}">Net Income</h6>
+                                    </div>
+                                    <h4 class="text-{{ 'success' if financial_summary.net_income >= 0 else 'danger' }}">${{ "{:,.2f}".format(financial_summary.net_income) }}</h4>
+                                    <small class="text-muted">
+                                        {% if financial_summary.total_income > 0 %}
+                                            ({{ "{:.1f}".format((financial_summary.net_income / financial_summary.total_income) * 100) }}% of income)
+                                        {% endif %}
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Progress Bar for Expense vs Income Ratio -->
+                    {% if financial_summary.total_income > 0 %}
+                    <div class="mt-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <small class="text-muted">Expense Ratio</small>
+                            <small class="text-muted">{{ "{:.1f}".format((financial_summary.total_expenses / financial_summary.total_income) * 100) }}% of income</small>
+                        </div>
+                        {% set expense_ratio = (financial_summary.total_expenses / financial_summary.total_income) * 100 %}
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-{{ 'danger' if expense_ratio > 80 else 'warning' if expense_ratio > 60 else 'success' }}" 
+                                 role="progressbar" 
+                                 style="width: {{ expense_ratio if expense_ratio <= 100 else 100 }}%"
+                                 aria-valuenow="{{ expense_ratio }}" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Detailed Budget Reports -->
+            {% for budget_data in budgets %}
+            {% set budget = budget_data.budget %}
+            {% set progress = budget_data.progress %}
+            {% set report_data = budget_data.report_data %}
+            
+            <div class="card mb-4">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-chart-line"></i> {{ budget.name }}
+                            <span class="badge bg-secondary ms-2">{{ budget.budget_month.strftime('%B %Y') }}</span>
+                        </h5>
+                        <div>
+                            <span class="badge bg-primary">{{ budget.mercury_account.name }}</span>
+                            <a href="{{ url_for('edit_budget', budget_id=budget.id) }}" class="btn btn-sm btn-outline-primary ms-2">
+                                <i class="fas fa-edit"></i> Edit Budget
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                {% if report_data %}
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Category</th>
+                                    <th class="text-end">Total Amount</th>
+                                    <th class="text-end">Budget Amount</th>
+                                    <th class="text-end">Remaining Budget</th>
+                                    <th class="text-end">Transaction Count</th>
+                                    <th class="text-end">Average Amount</th>
+                                    <th class="text-end">Budget Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for category_data in report_data %}
+                                {% set outer_loop = loop %}
+                                {% set budgeted_amount = category_data.budgeted_amount %}
+                                {% set budget_percentage = (category_data.total_amount / budgeted_amount * 100) if budgeted_amount > 0 else 0 %}
+                                {% set remaining_budget = category_data.remaining_budget %}
+                                <tr class="main-category-row" data-bs-toggle="collapse" data-bs-target="#subcategories-{{ budget.id }}-{{ loop.index }}" style="cursor: pointer;">
+                                    <td>
+                                        <strong>
+                                            <i class="fas fa-chevron-right collapse-icon me-2"></i>
+                                            {{ category_data.main_category }}
+                                        </strong>
+                                    </td>
+                                    <td class="text-end">
+                                        <strong>${{ "{:,.2f}".format(category_data.total_amount) }}</strong>
+                                    </td>
+                                    <td class="text-end">
+                                        <strong>
+                                            {% if budgeted_amount > 0 %}
+                                                ${{ "{:,.2f}".format(budgeted_amount) }}
+                                            {% else %}
+                                                <span class="text-muted">Not Budgeted</span>
+                                            {% endif %}
+                                        </strong>
+                                    </td>
+                                    <td class="text-end">
+                                        <strong>
+                                            {% if budgeted_amount > 0 %}
+                                                {% if category_data.is_income %}
+                                                    {% if remaining_budget > 0 %}
+                                                        <span class="text-warning">${{ "{:,.2f}".format(remaining_budget) }} short</span>
+                                                    {% elif remaining_budget < 0 %}
+                                                        <span class="text-success">${{ "{:,.2f}".format(remaining_budget|abs) }} ahead</span>
+                                                    {% else %}
+                                                        <span class="text-success">On target</span>
+                                                    {% endif %}
+                                                {% else %}
+                                                    {% if remaining_budget > 0 %}
+                                                        <span class="text-success">${{ "{:,.2f}".format(remaining_budget) }} left</span>
+                                                    {% elif remaining_budget < 0 %}
+                                                        <span class="text-danger">${{ "{:,.2f}".format(remaining_budget|abs) }} over</span>
+                                                    {% else %}
+                                                        <span class="text-muted">On budget</span>
+                                                    {% endif %}
+                                                {% endif %}
+                                            {% else %}
+                                                {% if category_data.is_income %}
+                                                    <!-- Income with no budget -->
+                                                    {% if category_data.total_amount > 0 %}
+                                                        <span class="text-success">${{ "{:,.2f}".format(category_data.total_amount) }} earned</span>
+                                                    {% else %}
+                                                        <span class="text-muted">No income</span>
+                                                    {% endif %}
+                                                {% else %}
+                                                    <!-- Expense with no budget - use remaining_budget calculation -->
+                                                    {% if remaining_budget < 0 %}
+                                                        <span class="text-danger">${{ "{:,.2f}".format(remaining_budget|abs) }} over</span>
+                                                    {% elif remaining_budget > 0 %}
+                                                        <span class="text-success">${{ "{:,.2f}".format(remaining_budget) }} saved</span>
+                                                    {% else %}
+                                                        <span class="text-muted">No spending</span>
+                                                    {% endif %}
+                                                {% endif %}
+                                            {% endif %}
+                                        </strong>
+                                    </td>
+                                    <td class="text-end">
+                                        <strong>{{ category_data.transaction_count }}</strong>
+                                    </td>
+                                    <td class="text-end">
+                                        <strong>${{ "{:,.2f}".format(category_data.average_amount) }}</strong>
+                                    </td>
+                                    <td class="text-end">
+                                        <strong>
+                                            {% if budgeted_amount > 0 %}
+                                                {% if budget_percentage > 100 %}
+                                                    <span class="badge bg-danger">{{ "{:.1f}".format(budget_percentage) }}% of ${{ "{:,.2f}".format(budgeted_amount) }}</span>
+                                                {% elif budget_percentage > 90 %}
+                                                    <span class="badge bg-warning">{{ "{:.1f}".format(budget_percentage) }}% of ${{ "{:,.2f}".format(budgeted_amount) }}</span>
+                                                {% else %}
+                                                    <span class="badge bg-success">{{ "{:.1f}".format(budget_percentage) }}% of ${{ "{:,.2f}".format(budgeted_amount) }}</span>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="badge bg-secondary">Not Budgeted</span>
+                                            {% endif %}
+                                        </strong>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Subcategories Row -->
+                                {% if category_data.subcategories %}
+                                <tr class="collapse" id="subcategories-{{ budget.id }}-{{ outer_loop.index }}">
+                                    <td colspan="7" class="p-0">
+                                        <div class="bg-light p-3">
+                                            <h6 class="mb-3">{{ category_data.main_category }} Subcategories</h6>
+                                            <div class="table-responsive">
+                                                <table class="table table-sm table-borderless mb-0">
+                                                    <thead>
+                                                        <tr class="border-bottom">
+                                                            <th>Subcategory</th>
+                                                            <th class="text-end">Amount</th>
+                                                            <th class="text-end">Transactions</th>
+                                                            <th class="text-end">Average</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {% for subcat in category_data.subcategories %}
+                                                        <tr>
+                                                            <td>
+                                                                <i class="fas fa-arrow-right text-muted me-2"></i>
+                                                                {{ subcat.subcategory }}
+                                                            </td>
+                                                            <td class="text-end">${{ "{:,.2f}".format(subcat.total_amount) }}</td>
+                                                            <td class="text-end">{{ subcat.transaction_count }}</td>
+                                                            <td class="text-end">${{ "{:,.2f}".format(subcat.average_amount) }}</td>
+                                                        </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                                {% endfor %}
+
+                                <!-- Totals Row -->
+                                {% set expense_categories = report_data | selectattr('is_income', 'equalto', false) | list %}
+                                {% set income_categories = report_data | selectattr('is_income', 'equalto', true) | list %}
+                                {% set total_expenses = expense_categories | sum(attribute='total_amount') %}
+                                {% set total_expense_budget = expense_categories | sum(attribute='budgeted_amount') %}
+                                {% set total_remaining = expense_categories | sum(attribute='remaining_budget') %}
+                                
+                                <tr class="table-dark fw-bold">
+                                    <td><strong>TOTAL (Expenses Only)</strong></td>
+                                    <td class="text-end"><strong>${{ "{:,.2f}".format(total_expenses) }}</strong></td>
+                                    <td class="text-end"><strong>${{ "{:,.2f}".format(total_expense_budget) }}</strong></td>
+                                    <td class="text-end">
+                                        <strong>
+                                            {% if total_remaining > 0 %}
+                                                <span class="text-success">${{ "{:,.2f}".format(total_remaining) }} left</span>
+                                            {% elif total_remaining < 0 %}
+                                                <span class="text-danger">${{ "{:,.2f}".format(total_remaining|abs) }} over</span>
+                                            {% else %}
+                                                <span class="text-muted">On budget</span>
+                                            {% endif %}
+                                        </strong>
+                                    </td>
+                                    <td class="text-end"><strong>{{ expense_categories | sum(attribute='transaction_count') }}</strong></td>
+                                    <td class="text-end">
+                                        <strong>
+                                            {% if expense_categories | sum(attribute='transaction_count') > 0 %}
+                                                ${{ "{:,.2f}".format(total_expenses / (expense_categories | sum(attribute='transaction_count'))) }}
+                                            {% else %}
+                                                $0.00
+                                            {% endif %}
+                                        </strong>
+                                    </td>
+                                    <td class="text-end">
+                                        <strong>
+                                            {% if total_expense_budget > 0 %}
+                                                {% set total_percentage = (total_expenses / total_expense_budget * 100) %}
+                                                {% if total_percentage > 100 %}
+                                                    <span class="badge bg-danger">{{ "{:.1f}".format(total_percentage) }}% of Budget</span>
+                                                {% elif total_percentage > 90 %}
+                                                    <span class="badge bg-warning">{{ "{:.1f}".format(total_percentage) }}% of Budget</span>
+                                                {% else %}
+                                                    <span class="badge bg-success">{{ "{:.1f}".format(total_percentage) }}% of Budget</span>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="badge bg-secondary">No Budget Set</span>
+                                            {% endif %}
+                                        </strong>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% else %}
+                <div class="card-body text-center py-4">
+                    <div class="text-muted">
+                        <i class="fas fa-chart-line fa-2x mb-3"></i>
+                        <h5>No Transaction Data</h5>
+                        <p>No transactions found for this budget period.</p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="text-center py-5">
+                <div class="mb-4">
+                    <i class="fas fa-search fa-3x text-muted"></i>
+                </div>
+                <h4 class="text-muted">No Budget Reports Found</h4>
+                <p class="text-muted mb-4">
+                    No budgets found for the selected month
+                    {% if selected_mercury_account_id %} and account{% endif %}.
+                </p>
+                <div>
+                    <a href="{{ url_for('budgets') }}" class="btn btn-outline-primary me-2">
+                        <i class="fas fa-arrow-left"></i> Back to Budgets
+                    </a>
+                    {% if current_user.has_role('admin') or current_user.has_role('super-admin') %}
+                    <a href="{{ url_for('create_budget') }}" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Create Budget
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+// Add expand/collapse functionality for subcategories
+document.addEventListener('DOMContentLoaded', function() {
+    const categoryRows = document.querySelectorAll('.main-category-row');
+    categoryRows.forEach(row => {
+        row.addEventListener('click', function() {
+            const icon = this.querySelector('.collapse-icon');
+            if (icon) {
+                icon.classList.toggle('fa-chevron-right');
+                icon.classList.toggle('fa-chevron-down');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

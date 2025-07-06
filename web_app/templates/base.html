@@ -268,6 +268,14 @@
                             </a>
                         </li>
                         {% endif %}
+                        {% if template_user.has_role('budgets') %}
+                        <li class="nav-item">
+                            <a class="nav-link {{ 'active' if request.endpoint in ['budgets', 'budget_reports', 'create_budget', 'edit_budget'] }}" href="{{ url_for('budgets') }}">
+                                <i class="fas fa-calculator me-2"></i>
+                                Budgets
+                            </a>
+                        </li>
+                        {% endif %}
                         {% if template_user.is_admin or template_user.is_super_admin %}
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('add_mercury_account') }}">

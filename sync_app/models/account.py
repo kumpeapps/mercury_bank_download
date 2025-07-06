@@ -99,6 +99,13 @@ class Account(Base):
     
     # Relationship to receipt policies
     receipt_policies = relationship("ReceiptPolicy", back_populates="account", cascade="all, delete-orphan", lazy="dynamic")
+    
+    # Many-to-many relationship with Budgets
+    budgets = relationship(
+        "Budget",
+        secondary="budget_accounts",
+        back_populates="accounts"
+    )
 
     def is_receipt_required_for_amount(self, amount, transaction_date=None):
         """

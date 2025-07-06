@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Budget{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-10 col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">Edit Budget: {{ budget.name }}</h4>
+                    <div>
+                        <span class="badge bg-secondary">{{ budget.budget_month.strftime('%B %Y') }}</span>
+                        <span class="badge bg-info">{{ budget.mercury_account.name }}</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Budget Progress Overview -->
+                    {% if budget_progress.categories %}
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h5>Current Budget Status</h5>
+                            <div class="progress mb-2" style="height: 20px;">
+                                {% set total_percentage = (budget_progress.total_spent / budget_progress.total_budgeted * 100) if budget_progress.total_budgeted > 0 else 0 %}
+                                <div class="progress-bar {% if total_percentage > 100 %}bg-danger{% elif total_percentage > 90 %}bg-warning{% else %}bg-success{% endif %}" 
+                                     style="width: {{ total_percentage if total_percentage <= 100 else 100 }}%">
+                                    {{ "{:.1f}".format(total_percentage) }}%
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span>Spent: <strong class="{% if budget_progress.total_spent > budget_progress.total_budgeted %}text-danger{% else %}text-success{% endif %}">
+                                    ${{ "{:,.2f}".format(budget_progress.total_spent) }}
+                                </strong></span>
+                                <span>Budget: <strong>${{ "{:,.2f}".format(budget_progress.total_budgeted) }}</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <form method="POST" id="budget-form">
+                        <!-- Budget Basic Info -->
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="name" class="form-label">Budget Name <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="name" name="name" 
+                                           value="{{ budget.name }}" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="budget_month" class="form-label">Budget Month <span class="text-danger">*</span></label>
+                                    <input type="month" class="form-control" id="budget_month" name="budget_month" 
+                                           value="{{ budget.budget_month.strftime('%Y-%m') }}" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Account Selection -->
+                        <div class="mb-4">
+                            <label class="form-label">Include Accounts</label>
+                            <div class="border rounded p-3">
+                                {% for account in available_accounts %}
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="account_ids" 
+                                           value="{{ account.id }}" id="account_{{ account.id }}"
+                                           {% if account in budget.accounts %}checked{% endif %}>
+                                    <label class="form-check-label" for="account_{{ account.id }}">
+                                        {{ account.nickname if account.nickname else account.name }} ({{ account.account_type }})
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <!-- Budget Categories -->
+                        <div class="mb-4">
+                            <h5>Budget Categories</h5>
+                            <div id="budget-categories">
+                                {% for category in budget.budget_categories %}
+                                <div class="row align-items-center mb-3 budget-category-row" data-category-id="{{ category.id }}">
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control category-input" name="category_names[]" 
+                                               value="{{ category.category_name }}" placeholder="Enter category name" required>
+                                        <input type="hidden" name="category_ids[]" value="{{ category.id }}">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" class="form-control" name="budgeted_amounts[]" 
+                                                   step="0.01" min="0" value="{{ category.budgeted_amount }}" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        {% if budget_progress.categories and category.category_name in budget_progress.categories %}
+                                        {% set cat_progress = budget_progress.categories[category.category_name] %}
+                                        <small class="text-muted">
+                                            Spent: <span class="{% if cat_progress.spent > category.budgeted_amount %}text-danger{% else %}text-success{% endif %}">
+                                                ${{ "{:,.2f}".format(cat_progress.spent) }}
+                                            </span>
+                                        </small>
+                                        <div class="progress" style="height: 4px;">
+                                            {% set cat_percentage = (cat_progress.spent / category.budgeted_amount * 100) if category.budgeted_amount > 0 else 0 %}
+                                            <div class="progress-bar {% if cat_percentage > 100 %}bg-danger{% elif cat_percentage > 90 %}bg-warning{% else %}bg-success{% endif %}" 
+                                                 style="width: {{ cat_percentage if cat_percentage <= 100 else 100 }}%"></div>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-md-2">
+                                        <button type="submit" name="action" value="delete_category_{{ category.id }}" 
+                                                class="btn btn-outline-danger btn-sm"
+                                                onclick="return confirm('Are you sure you want to delete this category?')">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                                
+                                <!-- Template for new categories -->
+                                <div class="row align-items-center mb-3" id="category-template" style="display: none;">
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control category-input" name="new_category_names[]" 
+                                               placeholder="Enter category name">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" class="form-control" name="new_budgeted_amounts[]" 
+                                                   step="0.01" min="0" placeholder="0.00">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3"></div>
+                                    <div class="col-md-2">
+                                        <button type="button" class="btn btn-outline-danger btn-sm remove-category">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" id="add-category" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-plus"></i> Add Category
+                            </button>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-12">
+                                <button type="submit" name="action" value="update" class="btn btn-primary">
+                                    <i class="fas fa-save"></i> Update Budget
+                                </button>
+                                <a href="{{ url_for('budgets') }}" class="btn btn-outline-secondary">Cancel</a>
+                                
+                                {% if current_user.has_role('admin') or current_user.has_role('super-admin') %}
+                                <div class="float-end">
+                                    <button type="submit" name="action" value="delete" class="btn btn-outline-danger"
+                                            onclick="return confirm('Are you sure you want to delete this budget? This action cannot be undone.')">
+                                        <i class="fas fa-trash"></i> Delete Budget
+                                    </button>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const budgetCategories = document.getElementById('budget-categories');
+    const categoryTemplate = document.getElementById('category-template');
+    const addCategoryBtn = document.getElementById('add-category');
+    
+    // Add category functionality
+    addCategoryBtn.addEventListener('click', function() {
+        const newCategory = categoryTemplate.cloneNode(true);
+        newCategory.style.display = 'block';
+        newCategory.removeAttribute('id');
+        
+        // Add remove functionality
+        const removeBtn = newCategory.querySelector('.remove-category');
+        removeBtn.addEventListener('click', function() {
+            newCategory.remove();
+        });
+        
+        budgetCategories.appendChild(newCategory);
+    });
+    
+    // Remove category functionality for existing elements
+    document.querySelectorAll('.remove-category').forEach(btn => {
+        btn.addEventListener('click', function() {
+            this.closest('.row').remove();
+        });
+    });
+    
+    // Form validation
+    document.getElementById('budget-form').addEventListener('submit', function(e) {
+        if (e.submitter && e.submitter.value.startsWith('delete_category_')) {
+            return; // Skip validation for delete actions
+        }
+        
+        if (e.submitter && e.submitter.value === 'delete') {
+            return; // Skip validation for budget delete
+        }
+        
+        const name = document.getElementById('name').value.trim();
+        const budgetMonth = document.getElementById('budget_month').value;
+        
+        if (!name) {
+            e.preventDefault();
+            alert('Please enter a budget name');
+            return;
+        }
+        
+        if (!budgetMonth) {
+            e.preventDefault();
+            alert('Please select a budget month');
+            return;
+        }
+    });
+});
+</script>
+
+<style>
+.budget-category-row {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+.budget-category-row:hover {
+    background-color: #e9ecef;
+}
+.progress {
+    border-radius: 3px;
+}
+</style>
+{% endblock %}

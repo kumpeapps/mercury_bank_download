@@ -18,10 +18,7 @@
     transition: transform 0.2s ease-in-out;
 }
 
-/* Attachment image hover e                    html += `
-                        <div class="col-md-6 col-lg-4">
-                            <div class="card h-100 attachment-card">
-                                <div class="card-body text-center">`;ts */
+/* Attachment image hover effects */
 .attachment-image:hover {
     transform: scale(1.05);
     transition: transform 0.3s ease-in-out;
@@ -108,15 +105,19 @@
                 </select>
             </div>
             <div class="col-12 col-md-6 col-lg-2">
-                <label for="account_id" class="form-label">Bank Account</label>
-                <select class="form-select" id="account_id" name="account_id">
-                    <option value="">All Accounts</option>
+                <label class="form-label">Bank Account</label>
+                <div class="form-check-group" style="max-height: 120px; overflow-y: auto;">
                     {% for account in accounts %}
-                    <option value="{{ account.id }}" {% if current_account_id == account.id %}selected{% endif %}>
-                        {{ account.nickname or account.name }}
-                    </option>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="account_id" value="{{ account.id }}" 
+                               id="account_{{ account.id }}" 
+                               {% if account.id|string in current_account_ids %}checked{% endif %}>
+                        <label class="form-check-label" for="account_{{ account.id }}">
+                            {{ account.nickname or account.name }}
+                        </label>
+                    </div>
                     {% endfor %}
-                </select>
+                </div>
             </div>
             <div class="col-12 col-md-6 col-lg-2">
                 <label for="month" class="form-label">Month</label>
@@ -154,7 +155,11 @@
                                id="status_{{ status }}" 
                                {% if status in current_status %}checked{% endif %}>
                         <label class="form-check-label" for="status_{{ status }}">
-                            {{ 'Posted' if status == 'sent' else status.title() }}
+                            {% if status == 'posted' %}
+                                Posted
+                            {% else %}
+                                {{ status.title() }}
+                            {% endif %}
                         </label>
                     </div>
                     {% endfor %}
@@ -177,7 +182,7 @@
                 <div class="d-flex gap-2">
                     <a href="{{ url_for('transactions', 
                                mercury_account_id=current_mercury_account_id,
-                               account_id=current_account_id,
+                               account_id=current_account_ids,
                                category=current_category,
                                month=current_month,
                                status=current_status,
@@ -187,7 +192,7 @@
                     </a>
                     <a href="{{ url_for('transactions', 
                                mercury_account_id=current_mercury_account_id,
-                               account_id=current_account_id,
+                               account_id=current_account_ids,
                                category=current_category,
                                month=current_month,
                                status=current_status,
@@ -292,27 +297,29 @@
                         </td>
                         <td class="text-center">
                             {% set account = accounts | selectattr('id', 'equalto', transaction.account_id) | first %}
+                            {% set attachment_count = transaction.number_of_attachments or 0 %}
+                            {% set has_attachments = attachment_count > 0 %}
                             {% if account %}
-                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, transaction.number_of_attachments > 0, transaction.posted_at) %}
+                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, has_attachments, transaction.posted_at) %}
                                 {% if receipt_status == 'required_present' %}
                                     <i class="fas fa-receipt text-success attachment-icon" 
                                        style="cursor: pointer;" 
                                        data-transaction-id="{{ transaction.id }}"
-                                       title="Receipt required and present ({{ transaction.number_of_attachments }} attachment(s)) - Click to view"></i>
+                                       title="Receipt required and present ({{ attachment_count }} attachment(s)) - Click to view"></i>
                                 {% elif receipt_status == 'required_missing' %}
                                     <i class="fas fa-receipt text-danger" title="Receipt required but missing"></i>
                                 {% elif receipt_status == 'optional_present' %}
                                     <i class="fas fa-receipt text-info attachment-icon" 
                                        style="cursor: pointer;" 
                                        data-transaction-id="{{ transaction.id }}"
-                                       title="Receipt not required but present ({{ transaction.number_of_attachments }} attachment(s)) - Click to view"></i>
+                                       title="Receipt not required but present - Click to view"></i>
                                 {% endif %}
-                            {% elif transaction.number_of_attachments > 0 %}
+                            {% elif has_attachments %}
                                 {# Fallback for cases where account lookup fails #}
                                 <i class="fas fa-receipt text-primary attachment-icon" 
                                    style="cursor: pointer;" 
                                    data-transaction-id="{{ transaction.id }}"
-                                   title="{{ transaction.number_of_attachments }} attachment(s) - Click to view"></i>
+                                   title="{{ attachment_count }} attachment(s) - Click to view"></i>
                             {% endif %}
                         </td>
                     </tr>
@@ -348,8 +355,10 @@
                                 {% endif %}
                             {% endif %}
                             {% set account = accounts | selectattr('id', 'equalto', transaction.account_id) | first %}
+                            {% set attachment_count = transaction.number_of_attachments or 0 %}
+                            {% set has_attachments = attachment_count > 0 %}
                             {% if account %}
-                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, transaction.number_of_attachments > 0, transaction.posted_at) %}
+                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, has_attachments, transaction.posted_at) %}
                                 {% if receipt_status == 'required_present' %}
                                     <i class="fas fa-receipt text-success attachment-icon ms-2" 
                                        style="cursor: pointer;" 
@@ -357,13 +366,13 @@
                                        title="Receipt required and present - Click to view"></i>
                                 {% elif receipt_status == 'required_missing' %}
                                     <i class="fas fa-receipt text-danger ms-2" title="Receipt required but missing"></i>
-                                {% elif receipt_status == 'optional_present' %}
+                                {% elif receipt_status == "optional_present" %}
                                     <i class="fas fa-receipt text-info attachment-icon ms-2" 
                                        style="cursor: pointer;" 
                                        data-transaction-id="{{ transaction.id }}"
                                        title="Receipt attached - Click to view"></i>
                                 {% endif %}
-                            {% elif transaction.number_of_attachments > 0 %}
+                            {% elif (transaction.number_of_attachments or 0) > 0 %}
                                 <i class="fas fa-receipt text-primary attachment-icon ms-2" 
                                    style="cursor: pointer;" 
                                    data-transaction-id="{{ transaction.id }}"
@@ -417,13 +426,13 @@
             <i class="fas fa-inbox fa-4x text-muted mb-3"></i>
             <h4>No Transactions Found</h4>
             <p class="text-muted">
-                {% if current_account_id or current_category or (current_status and current_status != ['sent', 'pending']) %}
+                {% if current_account_ids or current_category or (current_status and current_status != ['sent', 'pending']) %}
                     No transactions match your current filters.
                 {% else %}
                     No transactions available. Connect a Mercury account to see your transaction history.
                 {% endif %}
             </p>
-            {% if current_account_id or current_category or (current_status and current_status != ['sent', 'pending']) %}
+            {% if current_account_ids or current_category or (current_status and current_status != ['sent', 'pending']) %}
             <a href="{{ url_for('transactions') }}" class="btn btn-primary">Clear Filters</a>
             {% endif %}
         </div>
@@ -439,11 +448,11 @@
             </small>
             <div>
                 {% if page > 1 %}
-                <a href="{{ url_for('transactions', page=page-1, account_id=current_account_id, category=current_category, status=current_status) }}" 
+                <a href="{{ url_for('transactions', page=page-1, account_id=current_account_ids, category=current_category, status=current_status) }}" 
                    class="btn btn-sm btn-outline-primary">Previous</a>
                 {% endif %}
                 {% if transactions|length == 50 %}
-                <a href="{{ url_for('transactions', page=page+1, account_id=current_account_id, category=current_category, status=current_status) }}" 
+                <a href="{{ url_for('transactions', page=page+1, account_id=current_account_ids, category=current_category, status=current_status) }}" 
                    class="btn btn-sm btn-outline-primary">Next</a>
                 {% endif %}
             </div>
@@ -497,6 +506,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    
     // Handle attachment icon clicks
     document.querySelectorAll('.attachment-icon').forEach(function(icon) {
         icon.addEventListener('click', function() {

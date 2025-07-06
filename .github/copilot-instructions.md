@@ -203,3 +203,32 @@ Use the test runner script for all testing needs:
 - Use descriptive test names that explain the scenario
 - Follow the existing fixture pattern for database setup
 - Ensure tests are isolated and don't depend on each other
+
+## Code Cleanup and Maintenance
+
+### Temporary Files and Test Scripts
+- **Always remove temporary test scripts** when development tasks are complete
+- Delete any `.py` files created for testing, debugging, or one-time operations
+- Clean up temporary scripts like `test_*.py`, `debug_*.py`, `verify_*.py`, etc.
+- Use `git status` to identify untracked temporary files before committing
+- Keep the project root directory clean of temporary development artifacts
+
+### File Management Best Practices
+- Temporary scripts should be created in a `/tmp/` directory or similar when possible
+- If temporary files must be in the project directory, use descriptive names with dates
+- Document any temporary files that need to persist in comments or README updates
+- Remove any test data files, temporary exports, or debug outputs after use
+
+### Examples of Files to Clean Up
+```bash
+# Common temporary files to remove after development:
+rm test_*.py debug_*.py verify_*.py simulate_*.py
+rm assign_*.py ensure_*.py generate_*.py manage_*.py
+rm *.temp *.tmp test_*.sh.temp
+```
+
+### Version Control Hygiene
+- Review `git status` before committing to ensure no temporary files are included
+- Use `.gitignore` patterns for common temporary file types
+- Clean up any experimental branches or temporary commits
+- Maintain a clean commit history without debugging artifacts
