@@ -17,13 +17,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Budget Copy Functionality** - Easy month-to-month budget planning with one-click copying
 - **Role-Based Budget Access** - Budget management restricted to users with appropriate permissions
 - **Interactive Budget Reports** - Transaction-level drill-down and variance analysis
-- **Budget Database Schema** - New tables: budgets, budget_categories, budget_accounts
+
+### Database Changes
+- **New Tables**: `budgets`, `budget_categories`, `budget_accounts`
+- **Migration**: `b5ed68a6aa24_add_budgets_and_budget_categories_.py`
+- **New Role**: `budgets` role for budget management permissions
+- **Foreign Key Constraints**: Proper referential integrity with existing user and account tables
+- **Indexes**: Automatic indexes on foreign key columns for performance
 
 ### Enhanced
 - **Web Interface Navigation** - Added "Budgets" menu item for budget management access
 - **Reports Dashboard** - Integrated budget analytics with existing expense and category charts
 - **User Role System** - Added budget-specific permissions and access controls
-- **Database Schema** - Extended with comprehensive budget management tables
+- **Documentation** - Comprehensive budget usage guide and database migration documentation
 
 ## [2.0.1] - 2025-01-05
 

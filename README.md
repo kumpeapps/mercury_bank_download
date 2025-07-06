@@ -7,14 +7,18 @@ A comprehensive platform for Mercury Bank data synchronization and management, c
 
 ## 🎉 What's New in v2.1.0
 
-- **🏦 Complete Budget Management System** - Create, edit, and track budgets with detailed progress monitoring
-- **📊 Advanced Budget Reports** - Interactive budget reports with real-time progress tracking and variance analysis
-- **📈 Budget Analytics** - Visual budget vs. actual spending charts integrated into reports dashboard
-- **🎯 Category-Based Budgeting** - Set spending limits by transaction categories with intelligent sub-category support
-- **📅 Monthly Budget Planning** - Create monthly budgets with easy copy-to-next-month functionality
-- **🔄 Smart Budget Progress** - Real-time budget progress calculations with color-coded status indicators
-- **🏢 Multi-Account Budget Support** - Create budgets spanning multiple Mercury accounts within a group
-- **👥 Role-Based Budget Access** - Budget management restricted to users with appropriate permissions
+### 🏦 Complete Budget Management System
+Mercury Bank Integration Platform now includes comprehensive budget management capabilities:
+
+- **Budget Creation & Editing** - Create monthly budgets with category-based spending limits
+- **Real-Time Progress Tracking** - Color-coded status indicators (green/yellow/red) based on spending progress
+- **Advanced Budget Reports** - Interactive reports with variance analysis and transaction drill-down
+- **Multi-Account Support** - Create budgets spanning multiple Mercury accounts within a group
+- **Smart Analytics Integration** - Visual budget vs. actual spending charts in reports dashboard
+- **Role-Based Access Control** - Budget management restricted to users with appropriate permissions
+- **Easy Month-to-Month Planning** - One-click budget copying for future months
+
+**See the [Budget Management](#budget-management) section below for detailed usage instructions.**
 
 ### Previous Updates
 
@@ -75,11 +79,7 @@ mercury_bank_download/
 - 📈 **Reporting & Analytics** - Interactive charts with category/sub-category toggle, trends, and financial insights
 - 🎯 **Default Account Settings** - User-customizable default views
 - 📱 **Responsive Design** - Works on desktop, tablet, and mobile devices
-- 🏦 **Complete Budget Management** - Create, edit, and track monthly budgets with detailed progress monitoring
-- 📊 **Budget Analytics** - Visual budget vs. actual spending analysis with real-time progress tracking
-- 💸 **Category-Based Budgeting** - Set spending limits by transaction categories with sub-category support
-- 📅 **Multi-Account Budget Support** - Create budgets spanning multiple Mercury accounts within a group
-- 🔄 **Smart Budget Tracking** - Automatic progress calculations with color-coded status indicators
+- 🏦 **Budget Management** - Complete budgeting system (see [Budget Management](#budget-management) for details)
 
 ## 🚀 Quick Start
 
@@ -743,77 +743,99 @@ docker-compose down
 docker-compose up -d
 ```
 
-## 🔍 Troubleshooting
+## 🔄 Database Migrations
 
-### Common Issues
+### Budget System Database Migrations
 
-| Issue | Symptoms | Solution |
-|-------|----------|----------|
-| **Invalid API Key** | `401 Unauthorized` errors | Verify API key in Mercury dashboard |
-| **Database Connection** | `Connection refused` errors | Check DATABASE_URL and database status |
-| **Sync Failures** | Missing transactions | Check Mercury API rate limits |
-| **Container Issues** | Service won't start | Review `docker-compose logs` |
-| **Permission Errors** | User access denied | Verify user-account associations |
+The budget management system was introduced in v2.1.0 with comprehensive database schema changes. The migration system uses **Alembic** to manage these changes automatically.
 
-### Debugging Commands
+#### Migration Files
 
-```bash
-# Test database connection
-docker-compose exec mercury-sync python -c "
-from models.base import create_engine_and_session
-engine, session = create_engine_and_session()
-print('Database connection successful')
-"
+**Primary Migration**: `b5ed68a6aa24_add_budgets_and_budget_categories_.py`
+- **Created**: 2025-07-06 15:29:27
+- **Revision ID**: `b5ed68a6aa24`
+- **Previous Revision**: `11064205e552`
 
-# Check Mercury accounts configuration
-docker-compose exec web-app python -c "
-from models.mercury_account import MercuryAccount
-from models.base import create_engine_and_session
-engine, session = create_engine_and_session()
-accounts = session.query(MercuryAccount).all()
-print(f'Configured Mercury accounts: {len(accounts)}')
-for acc in accounts: print(f'- {acc.name}: {\"Active\" if acc.is_active else \"Inactive\"}')
-"
-```
+#### Tables Created
 
-### Log Analysis
+1. **`budgets`** - Main budget records
+   - Primary key: `id` (INTEGER, AUTO_INCREMENT)
+   - Foreign keys: `mercury_account_id` → `mercury_accounts.id`, `created_by_user_id` → `users.id`
+   - Indexes: Automatic indexes on foreign key columns
+
+2. **`budget_categories`** - Budget category spending limits
+   - Primary key: `id` (INTEGER, AUTO_INCREMENT) 
+   - Foreign key: `budget_id` → `budgets.id`
+   - Cascade delete: Categories are removed when budget is deleted
+
+3. **`budget_accounts`** - Many-to-many budget-account associations
+   - Composite primary key: `(budget_id, account_id)`
+   - Foreign keys: `budget_id` → `budgets.id`, `account_id` → `accounts.id`
+
+#### Migration Commands
 
 ```bash
-# Error patterns
-docker-compose logs mercury-sync | grep ERROR
+# Check current migration status
+docker-compose exec web-app python migrate.py status
+docker-compose exec sync-app python migrate.py status
 
-# Sync statistics
-docker-compose logs mercury-sync | grep "Sync completed"
+# Apply budget system migrations (automatic on container startup)
+docker-compose exec web-app python migrate.py upgrade
+docker-compose exec sync-app python migrate.py upgrade
 
-# API rate limit warnings
-docker-compose logs mercury-sync | grep "rate limit"
-
-# Database errors
-docker-compose logs mercury-sync | grep "SQLAlchemy"
+# View migration history including budget changes
+docker-compose exec web-app python migrate.py history --verbose
 ```
+
+#### Migration Safety
+
+- **Backward Compatible**: The migration includes proper `downgrade()` functions
+- **Foreign Key Constraints**: Proper referential integrity maintained
+- **Rollback Support**: Can safely rollback budget tables if needed
+- **Data Preservation**: Existing transaction and user data remains untouched
+
+#### Post-Migration Setup
+
+After the budget migration runs, the following role is automatically created:
+- **`budgets`** role - Required for budget management access
+
+**Role Assignment**:
+```bash
+# Assign budget role to admin users (via CLI or web interface)
+./dev.sh cli-gui
+# Select: User Management → Assign Role → Select User → Add "budgets" role
+```
+
+#### Troubleshooting Migrations
+
+```bash
+# If migration fails, check current database state
+docker-compose exec db mysql -u mercury -p -e "SHOW TABLES LIKE '%budget%';"
+
+# View migration table status
+docker-compose exec db mysql -u mercury -p -e "SELECT * FROM alembic_version;"
+
+# Force migration to specific revision (use with caution)
+docker-compose exec web-app python migrate.py stamp b5ed68a6aa24
+```
+
+**Important**: Budget migrations run automatically when containers start. Manual intervention is typically only needed for troubleshooting or custom deployments.
 
 ## 🆕 What's New
 
 ### Version 2.1.0 Features
 
-- ✅ **Complete Budget Management System** - Create, edit, and track monthly budgets with detailed progress monitoring
-- ✅ **Advanced Budget Reports** - Interactive budget reports with real-time progress tracking and variance analysis
-- ✅ **Budget Analytics Integration** - Visual budget vs. actual spending charts in reports dashboard
-- ✅ **Category-Based Budgeting** - Set spending limits by transaction categories with intelligent sub-category support
-- ✅ **Multi-Account Budget Support** - Create budgets spanning multiple Mercury accounts within a group
-- ✅ **Smart Budget Progress Tracking** - Real-time calculations with color-coded status indicators
-- ✅ **Role-Based Budget Access** - Budget management restricted to users with appropriate permissions
-- ✅ **Budget Copy Functionality** - Easy month-to-month budget planning with one-click copying
+- ✅ **Complete Budget Management System** - See [Budget Management](#budget-management) section for full details
+- ✅ **Multi-Account Architecture** - Manage multiple Mercury Bank accounts
+- ✅ **User Management System** - Role-based access control
+- ✅ **Analytics Dashboard** - Interactive transaction insights with integrated budget analytics
+- ✅ **Enhanced Chart Controls** - Dynamic category/sub-category toggle views
 
 ### Previous Version Features
 
-- ✅ **Multi-Account Architecture** - Manage multiple Mercury Bank accounts
-- ✅ **User Management System** - Role-based access control
 - ✅ **Sandbox Environment** - Built-in testing support
 - ✅ **Enhanced Docker Support** - Multiple image variants
 - ✅ **Improved Error Handling** - Better resilience and recovery
-- ✅ **Analytics Dashboard** - Interactive transaction insights and category-based reporting
-- ✅ **Enhanced Chart Controls** - Dynamic category/sub-category toggle views
 - 🔐 **Enhanced Security** - OAuth2 and API key rotation
 - 📱 **Mobile API** - REST API for mobile applications
 - 🚀 **Performance Optimization** - Parallel sync processing
