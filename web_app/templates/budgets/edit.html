@@ -66,7 +66,7 @@
                                            value="{{ account.id }}" id="account_{{ account.id }}"
                                            {% if account in budget.accounts %}checked{% endif %}>
                                     <label class="form-check-label" for="account_{{ account.id }}">
-                                        {{ account.name }} ({{ account.account_type }})
+                                        {{ account.nickname if account.nickname else account.name }} ({{ account.account_type }})
                                     </label>
                                 </div>
                                 {% endfor %}

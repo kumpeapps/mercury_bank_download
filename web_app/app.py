@@ -3584,7 +3584,8 @@ def get_budget_report_data(db_session, budget):
                 'description': transaction.description,
                 'amount': abs(transaction.amount),  # Show absolute value in transaction details
                 'date': transaction.posted_at or transaction.created_at,
-                'account_name': transaction.account.name if transaction.account else 'Unknown'
+                'account_name': (transaction.account.nickname if transaction.account and transaction.account.nickname 
+                              else transaction.account.name if transaction.account else 'Unknown')
             })
     
     # Add budget categories that have no transactions
@@ -3655,7 +3656,8 @@ def get_budget_report_data(db_session, budget):
                         'description': transaction.description,
                         'amount': amount,
                         'date': transaction.posted_at or transaction.created_at,
-                        'account_name': transaction.account.name if transaction.account else 'Unknown'
+                        'account_name': (transaction.account.nickname if transaction.account and transaction.account.nickname 
+                                      else transaction.account.name if transaction.account else 'Unknown')
                     })
             else:
                 # Handle large uncategorized transactions as "Uncategorized Income"
@@ -3672,7 +3674,8 @@ def get_budget_report_data(db_session, budget):
                     'description': transaction.description,
                     'amount': amount,
                     'date': transaction.posted_at or transaction.created_at,
-                    'account_name': transaction.account.name if transaction.account else 'Unknown'
+                    'account_name': (transaction.account.nickname if transaction.account and transaction.account.nickname 
+                                  else transaction.account.name if transaction.account else 'Unknown')
                 })
         
         # Convert income subcategories to list
@@ -4364,6 +4367,8 @@ def get_budget_accounts(mercury_account_id):
             {
                 "id": account.id,
                 "name": account.name,
+                "nickname": account.nickname,
+                "display_name": account.nickname if account.nickname else account.name,
                 "account_type": account.account_type or "Unknown"
             }
             for account in accounts
