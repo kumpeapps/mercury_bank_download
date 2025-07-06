@@ -103,6 +103,9 @@ class MercuryAccount(Base):
     # One-to-many relationship with Account
     accounts = relationship("Account", back_populates="mercury_account")
 
+    # One-to-many relationship with Budget
+    budgets = relationship("Budget", back_populates="mercury_account")
+
     # Many-to-many relationship with User
     users = relationship(
         "User",

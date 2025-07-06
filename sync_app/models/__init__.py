@@ -7,5 +7,6 @@ from .user import User
 from .mercury_account import MercuryAccount
 from .system_setting import SystemSetting
 from .user_settings import UserSettings
+from .budget import Budget, BudgetCategory
 
-__all__ = ['Base', 'ReceiptPolicy', 'Account', 'Transaction', 'TransactionAttachment', 'User', 'MercuryAccount', 'SystemSetting', 'UserSettings']
+__all__ = ['Base', 'ReceiptPolicy', 'Account', 'Transaction', 'TransactionAttachment', 'User', 'MercuryAccount', 'SystemSetting', 'UserSettings', 'Budget', 'BudgetCategory']

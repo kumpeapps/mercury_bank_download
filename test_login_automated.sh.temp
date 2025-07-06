@@ -1,4 +1,0 @@
-# Cleanup
-rm cookies.txt
-
-echo "All tests passed! The test-roles user can log in and view Mercury accounts, but cannot add or edit accounts (admin only)."

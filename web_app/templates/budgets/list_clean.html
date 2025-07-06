@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Budget Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Budget Management</h2>
+                <div>
+                    <a href="{{ url_for('budget_reports') }}" class="btn btn-outline-primary me-2">
+                        <i class="fas fa-chart-line"></i> View Reports
+                    </a>
+                    {% if current_user.has_role('admin') or current_user.has_role('super-admin') %}
+                    <a href="{{ url_for('create_budget') }}" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Create New Budget
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if budgets %}
+            <div class="row">
+                {% for budget_data in budgets %}
+                {% set budget = budget_data.budget %}
+                {% set progress = budget_data.progress %}
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">{{ budget.name }}</h5>
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="{{ url_for('budget_reports', month=budget.budget_month.strftime('%Y-%m'), mercury_account_id=budget.mercury_account_id) }}">
+                                        <i class="fas fa-chart-line"></i> View Report
+                                    </a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item" href="{{ url_for('edit_budget', budget_id=budget.id) }}">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </a></li>
+                                    {% if current_user.has_role('admin') or current_user.has_role('super-admin') %}
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li>
+                                        <form method="POST" action="{{ url_for('copy_budget', budget_id=budget.id) }}" style="display: inline;">
+                                            <input type="hidden" name="target_month" value="{{ (budget.budget_month.replace(month=budget.budget_month.month+1) if budget.budget_month.month < 12 else budget.budget_month.replace(year=budget.budget_month.year+1, month=1)).strftime('%Y-%m') }}">
+                                            <input type="hidden" name="target_name" value="{{ budget.name }} ({{ (budget.budget_month.replace(month=budget.budget_month.month+1) if budget.budget_month.month < 12 else budget.budget_month.replace(year=budget.budget_month.year+1, month=1)).strftime('%B %Y') }})">
+                                            <button type="submit" class="dropdown-item">
+                                                <i class="fas fa-copy"></i> Copy to Next Month
+                                            </button>
+                                        </form>
+                                    </li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li>
+                                        <form method="POST" action="{{ url_for('delete_budget', budget_id=budget.id) }}" 
+                                              onsubmit="return confirm('Are you sure you want to delete this budget?')">
+                                            <button type="submit" class="dropdown-item text-danger">
+                                                <i class="fas fa-trash"></i> Delete
+                                            </button>
+                                        </form>
+                                    </li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-2">
+                                <small class="text-muted">
+                                    <i class="fas fa-calendar"></i> {{ budget.budget_month.strftime('%B %Y') }}
+                                </small>
+                            </div>
+                            <div class="mb-2">
+                                <small class="text-muted">
+                                    <i class="fas fa-building"></i> {{ budget.mercury_account.name }}
+                                </small>
+                            </div>
+                            
+                            {% if progress.categories %}
+                            <div class="budget-progress mt-3">
+                                <h6>Budget Overview</h6>
+                                
+                                <!-- Overall Progress -->
+                                <div class="mb-3 p-2 border rounded">
+                                    <div class="d-flex justify-content-between">
+                                        <strong>Total Budget</strong>
+                                        <strong class="{% if progress.total_spent > progress.total_budgeted %}text-danger{% elif progress.total_spent > (progress.total_budgeted * 0.9) %}text-warning{% else %}text-success{% endif %}">
+                                            {{ "${:,.0f}".format(progress.total_spent) }} / {{ "${:,.0f}".format(progress.total_budgeted) }}
+                                        </strong>
+                                    </div>
+                                    {% set total_percentage = (progress.total_spent / progress.total_budgeted * 100) if progress.total_budgeted > 0 else 0 %}
+                                    <div class="progress mt-2" style="height: 10px;">
+                                        <div class="progress-bar {% if total_percentage > 100 %}bg-danger{% elif total_percentage > 90 %}bg-warning{% else %}bg-success{% endif %}" 
+                                             style="width: {{ total_percentage if total_percentage <= 100 else 100 }}%"></div>
+                                    </div>
+                                    <small class="text-muted">
+                                        {{ "{:.1f}".format(total_percentage) }}% used
+                                        {% if progress.total_budgeted - progress.total_spent > 0 %}
+                                            • {{ "${:,.0f}".format(progress.total_budgeted - progress.total_spent) }} remaining
+                                        {% elif progress.total_spent > progress.total_budgeted %}
+                                            • {{ "${:,.0f}".format(progress.total_spent - progress.total_budgeted) }} over
+                                        {% endif %}
+                                    </small>
+                                </div>
+
+                                <!-- Top Categories (first 3) -->
+                                {% for category_name, category_data in progress.categories.items() %}
+                                {% if loop.index <= 3 %}
+                                <div class="mb-2">
+                                    <div class="d-flex justify-content-between">
+                                        <small class="text-truncate" style="max-width: 60%;">{{ category_name }}</small>
+                                        <small>{{ "${:,.0f}".format(category_data.spent) }} / {{ "${:,.0f}".format(category_data.budgeted) }}</small>
+                                    </div>
+                                    {% set percentage = (category_data.spent / category_data.budgeted * 100) if category_data.budgeted > 0 else 0 %}
+                                    <div class="progress" style="height: 4px;">
+                                        <div class="progress-bar {% if percentage > 100 %}bg-danger{% elif percentage > 90 %}bg-warning{% else %}bg-success{% endif %}" 
+                                             style="width: {{ percentage if percentage <= 100 else 100 }}%"></div>
+                                    </div>
+                                </div>
+                                {% endif %}
+                                {% endfor %}
+                                
+                                {% if progress.categories|length > 3 %}
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle"></i> {{ progress.categories|length - 3 }} more categories - 
+                                    <a href="{{ url_for('budget_reports', month=budget.budget_month.strftime('%Y-%m'), mercury_account_id=budget.mercury_account_id) }}" class="text-decoration-none">
+                                        view detailed report
+                                    </a>
+                                </small>
+                                {% endif %}
+                            </div>
+                            {% else %}
+                            <div class="text-muted">
+                                <small><i class="fas fa-exclamation-triangle"></i> No categories defined</small>
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="card-footer">
+                            <div class="d-flex justify-content-between">
+                                <a href="{{ url_for('edit_budget', budget_id=budget.id) }}" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-edit"></i> Edit
+                                </a>
+                                <a href="{{ url_for('budget_reports', month=budget.budget_month.strftime('%Y-%m'), mercury_account_id=budget.mercury_account_id) }}" class="btn btn-sm btn-primary">
+                                    <i class="fas fa-chart-line"></i> View Report
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <div class="mb-4">
+                    <i class="fas fa-wallet fa-3x text-muted"></i>
+                </div>
+                <h4 class="text-muted">No Budgets Created</h4>
+                <p class="text-muted mb-4">Start managing your finances by creating your first budget.</p>
+                {% if current_user.has_role('admin') or current_user.has_role('super-admin') %}
+                <a href="{{ url_for('create_budget') }}" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Create Your First Budget
+                </a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

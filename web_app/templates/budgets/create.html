@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Create Budget{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">Create New Budget</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="budget-form">
+                        <!-- Budget Basic Info -->
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="mb-3">
+                                    <label for="name" class="form-label">Budget Name <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="name" name="name" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="mercury_account_id" class="form-label">Mercury Account <span class="text-danger">*</span></label>
+                                    <select class="form-select" id="mercury_account_id" name="mercury_account_id" required>
+                                        <option value="">Select Mercury Account</option>
+                                        {% for mercury_account in mercury_accounts %}
+                                        <option value="{{ mercury_account.id }}">{{ mercury_account.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="budget_month" class="form-label">Budget Month <span class="text-danger">*</span></label>
+                                    <input type="month" class="form-control" id="budget_month" name="budget_month" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Account Selection -->
+                        <div class="mb-3">
+                            <label class="form-label">Include Accounts</label>
+                            <div id="account-selection" class="border rounded p-3" style="min-height: 100px;">
+                                <div class="text-muted">Select a Mercury account first to see available accounts</div>
+                            </div>
+                        </div>
+
+                        <!-- Budget Categories -->
+                        <div class="mb-3">
+                            <label class="form-label">Budget Categories</label>
+                            <div id="budget-categories">
+                                <div class="row align-items-center mb-2" id="category-template" style="display: none;">
+                                    <div class="col-md-6">
+                                        <input type="text" class="form-control category-input" name="category_names[]" placeholder="Enter category name">
+                                    </div>
+                                    <div class="col-md-5">
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" class="form-control" name="budgeted_amounts[]" step="0.01" min="0" placeholder="0.00">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-1">
+                                        <button type="button" class="btn btn-outline-danger btn-sm remove-category">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" id="add-category" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-plus"></i> Add Category
+                            </button>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-primary">Create Budget</button>
+                                <a href="{{ url_for('budgets') }}" class="btn btn-outline-secondary">Cancel</a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const mercuryAccountSelect = document.getElementById('mercury_account_id');
+    const accountSelection = document.getElementById('account-selection');
+    const budgetCategories = document.getElementById('budget-categories');
+    const categoryTemplate = document.getElementById('category-template');
+    const addCategoryBtn = document.getElementById('add-category');
+    
+    // Set default month to current month
+    const today = new Date();
+    const currentMonth = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
+    document.getElementById('budget_month').value = currentMonth;
+    
+    // Load accounts when Mercury account changes
+    mercuryAccountSelect.addEventListener('change', function() {
+        const mercuryAccountId = this.value;
+        if (mercuryAccountId) {
+            loadAccounts(mercuryAccountId);
+        } else {
+            accountSelection.innerHTML = '<div class="text-muted">Select a Mercury account first to see available accounts</div>';
+        }
+    });
+    
+    function loadAccounts(mercuryAccountId) {
+        fetch(`/api/budget_accounts/${mercuryAccountId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    accountSelection.innerHTML = `<div class="text-danger">${data.error}</div>`;
+                    return;
+                }
+                
+                // Render accounts
+                let html = '';
+                if (data.accounts && data.accounts.length > 0) {
+                    data.accounts.forEach(account => {
+                        html += `
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="account_ids" 
+                                       value="${account.id}" id="account_${account.id}">
+                                <label class="form-check-label" for="account_${account.id}">
+                                    ${account.name} (${account.account_type})
+                                </label>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html = '<div class="text-muted">No accounts found for this Mercury account</div>';
+                }
+                accountSelection.innerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error loading accounts:', error);
+                accountSelection.innerHTML = '<div class="text-danger">Error loading accounts</div>';
+            });
+    }
+    
+    // Add category functionality
+    addCategoryBtn.addEventListener('click', function() {
+        const newCategory = categoryTemplate.cloneNode(true);
+        newCategory.style.display = 'block';
+        newCategory.removeAttribute('id');
+        
+        // Add remove functionality
+        const removeBtn = newCategory.querySelector('.remove-category');
+        removeBtn.addEventListener('click', function() {
+            newCategory.remove();
+        });
+        
+        budgetCategories.appendChild(newCategory);
+    });
+    
+    // Form validation
+    document.getElementById('budget-form').addEventListener('submit', function(e) {
+        const name = document.getElementById('name').value.trim();
+        const mercuryAccountId = document.getElementById('mercury_account_id').value;
+        const budgetMonth = document.getElementById('budget_month').value;
+        
+        if (!name) {
+            e.preventDefault();
+            alert('Please enter a budget name');
+            return;
+        }
+        
+        if (!mercuryAccountId) {
+            e.preventDefault();
+            alert('Please select a Mercury account');
+            return;
+        }
+        
+        if (!budgetMonth) {
+            e.preventDefault();
+            alert('Please select a budget month');
+            return;
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -44,6 +44,11 @@ def initialize_system_roles():
             "is_system_role": True
         },
         {
+            "name": "budgets",
+            "description": "Access to view and manage budgets and budget tracking",
+            "is_system_role": True
+        },
+        {
             "name": "locked",
             "description": "Locked user with no system access",
             "is_system_role": True
