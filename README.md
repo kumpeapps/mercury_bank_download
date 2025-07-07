@@ -1,7 +1,7 @@
 # Mercury Bank Integration Platform
 
-[![Docker Hub - Sync Service](https://img.shields.io/docker/v/justinkumpe/mercury-bank-sync?label=sync%20service&logo=docker&logoColor=white)](https://hub.docker.com/r/justinkumpe/mercury-bank-sync)
-[![Docker Hub - Web GUI](https://img.shields.io/docker/v/justinkumpe/mercury-bank-sync-gui?label=web%20gui&logo=docker&logoColor=white)](https://hub.docker.com/r/justinkumpe/mercury-bank-sync-gui)
+[![Docker Hub - Sync Service](https://img.shields.io/docker/v/justinkumpe/mercury-bank-sync?sort=semver&label=sync%20service&logo=docker&logoColor=white)](https://hub.docker.com/r/justinkumpe/mercury-bank-sync)
+[![Docker Hub - Web GUI](https://img.shields.io/docker/v/justinkumpe/mercury-bank-sync-gui?sort=semver&label=web%20gui&logo=docker&logoColor=white)](https://hub.docker.com/r/justinkumpe/mercury-bank-sync-gui)
 [![Docker Pulls - Sync](https://img.shields.io/docker/pulls/justinkumpe/mercury-bank-sync?logo=docker&logoColor=white&label=sync%20pulls)](https://hub.docker.com/r/justinkumpe/mercury-bank-sync)
 [![Docker Pulls - GUI](https://img.shields.io/docker/pulls/justinkumpe/mercury-bank-sync-gui?logo=docker&logoColor=white&label=gui%20pulls)](https://hub.docker.com/r/justinkumpe/mercury-bank-sync-gui)
 
@@ -574,7 +574,7 @@ You can use the provided helper script to apply changes properly:
 
 ### Available Images
 
-- **Production**: `kumpeapps/mercury_bank_download:latest`
+- **Production**: `justinkumpe/mercury-bank-sync:latest`
 - **Beta**: `mercury_bank_download:latest-beta`
 
 ### Custom Docker Build
@@ -610,7 +610,7 @@ services:
 version: '3.8'
 services:
   mercury-sync:
-    image: kumpeapps/mercury_bank_download:latest
+    image: justinkumpe/mercury-bank-sync:latest
     environment:
       - DATABASE_URL=mysql+pymysql://user:pass@external-db:3306/mercury
     restart: unless-stopped
