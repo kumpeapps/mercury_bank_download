@@ -42,9 +42,6 @@ RUN chmod +x /app/start.sh
 RUN chmod +x /app/optimize_static_assets.sh
 RUN chmod +x /app/update_template_assets.py
 
-# Create static directory structure
-RUN mkdir -p /app/static/{css,js,fonts,webfonts}
-
 # Create a non-root user
 RUN useradd --create-home --shell /bin/bash app
 RUN chown -R app:app /app
