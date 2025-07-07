@@ -1,9 +1,9 @@
 # Mercury Bank Integration Platform
 
-[![Docker Hub - Sync Service](https://img.shields.io/docker/v/kumpeapps/mercury-bank-sync?label=sync%20service&logo=docker&logoColor=white)](https://hub.docker.com/r/kumpeapps/mercury-bank-sync)
-[![Docker Hub - Web GUI](https://img.shields.io/docker/v/kumpeapps/mercury-bank-sync-gui?label=web%20gui&logo=docker&logoColor=white)](https://hub.docker.com/r/kumpeapps/mercury-bank-sync-gui)
-[![Docker Pulls - Sync](https://img.shields.io/docker/pulls/kumpeapps/mercury-bank-sync?logo=docker&logoColor=white&label=sync%20pulls)](https://hub.docker.com/r/kumpeapps/mercury-bank-sync)
-[![Docker Pulls - GUI](https://img.shields.io/docker/pulls/kumpeapps/mercury-bank-sync-gui?logo=docker&logoColor=white&label=gui%20pulls)](https://hub.docker.com/r/kumpeapps/mercury-bank-sync-gui)
+[![Docker Hub - Sync Service](https://img.shields.io/docker/v/justinkumpe/mercury-bank-sync?label=sync%20service&logo=docker&logoColor=white)](https://hub.docker.com/r/justinkumpe/mercury-bank-sync)
+[![Docker Hub - Web GUI](https://img.shields.io/docker/v/justinkumpe/mercury-bank-sync-gui?label=web%20gui&logo=docker&logoColor=white)](https://hub.docker.com/r/justinkumpe/mercury-bank-sync-gui)
+[![Docker Pulls - Sync](https://img.shields.io/docker/pulls/justinkumpe/mercury-bank-sync?logo=docker&logoColor=white&label=sync%20pulls)](https://hub.docker.com/r/justinkumpe/mercury-bank-sync)
+[![Docker Pulls - GUI](https://img.shields.io/docker/pulls/justinkumpe/mercury-bank-sync-gui?logo=docker&logoColor=white&label=gui%20pulls)](https://hub.docker.com/r/justinkumpe/mercury-bank-sync-gui)
 
 A comprehensive platform for Mercury Bank data synchronization and management, consisting of two main components:
 
