@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-01-06
+
+### Added
+- **Complete Budget Management System** - Full-featured budget creation, editing, and tracking
+- **Advanced Budget Reports** - Detailed budget vs. actual spending analysis with drill-down capability
+- **Budget Analytics Integration** - Visual budget charts integrated with main reports dashboard  
+- **Category-Based Budgeting** - Set spending limits by transaction categories with sub-category support
+- **Multi-Account Budget Support** - Create budgets spanning multiple Mercury accounts within a group
+- **Smart Budget Progress Tracking** - Real-time progress calculations with color-coded status indicators
+- **Budget Copy Functionality** - Easy month-to-month budget planning with one-click copying
+- **Role-Based Budget Access** - Budget management restricted to users with appropriate permissions
+- **Interactive Budget Reports** - Transaction-level drill-down and variance analysis
+
+### Database Changes
+- **New Tables**: `budgets`, `budget_categories`, `budget_accounts`
+- **Migration**: `b5ed68a6aa24_add_budgets_and_budget_categories_.py`
+- **New Role**: `budgets` role for budget management permissions
+- **Foreign Key Constraints**: Proper referential integrity with existing user and account tables
+- **Indexes**: Automatic indexes on foreign key columns for performance
+
+### Enhanced
+- **Web Interface Navigation** - Added "Budgets" menu item for budget management access
+- **Reports Dashboard** - Integrated budget analytics with existing expense and category charts
+- **User Role System** - Added budget-specific permissions and access controls
+- **Documentation** - Comprehensive budget usage guide and database migration documentation
+
 ## [2.0.1] - 2025-01-05
 
 ### Added

@@ -213,6 +213,14 @@ Use the test runner script for all testing needs:
 - Use `git status` to identify untracked temporary files before committing
 - Keep the project root directory clean of temporary development artifacts
 
+### Important: Migration Scripts Are NOT Temporary
+The following migration-related files are **permanent project files** and should **NEVER** be deleted:
+- `alembic_setup_summary.py` - Alembic configuration and setup utilities
+- `generate_initial_migration.py` - Initial migration generation script
+- `manage_migrations.py` - Migration management utilities
+
+These files are part of the core database migration system and are required for proper database schema management.
+
 ### File Management Best Practices
 - Temporary scripts should be created in a `/tmp/` directory or similar when possible
 - If temporary files must be in the project directory, use descriptive names with dates
@@ -223,8 +231,13 @@ Use the test runner script for all testing needs:
 ```bash
 # Common temporary files to remove after development:
 rm test_*.py debug_*.py verify_*.py simulate_*.py
-rm assign_*.py ensure_*.py generate_*.py manage_*.py
+rm assign_*.py ensure_*.py
 rm *.temp *.tmp test_*.sh.temp
+
+# DO NOT DELETE these migration files:
+# alembic_setup_summary.py
+# generate_initial_migration.py  
+# manage_migrations.py
 ```
 
 ### Version Control Hygiene
