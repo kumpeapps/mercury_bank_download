@@ -7,6 +7,10 @@ set -e  # Exit on any error
 
 echo "🚀 Starting Mercury Bank Web Application..."
 
+# Auto-optimize static assets for performance
+echo "🎯 Auto-optimizing static assets..."
+./optimize_static_assets.sh
+
 # Wait for database to be ready
 echo "⏳ Waiting for database to be ready..."
 max_attempts=30

@@ -47,6 +47,9 @@ from models.system_setting import SystemSetting
 from models.budget import Budget, BudgetCategory
 from models.base import Base
 
+# Import performance configuration
+from performance_config import apply_performance_optimizations
+
 # Sub-category helper functions
 def parse_category(category_string):
     """
@@ -143,6 +146,9 @@ def format_category_display(category_string):
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "your-secret-key-change-this")
+
+# Apply automatic performance optimizations
+apply_performance_optimizations(app)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -3032,10 +3038,24 @@ def user_settings():
             )
 
             # Update settings
-            settings.dashboard_preferences = dashboard_prefs
-            settings.report_preferences = report_prefs
-            settings.transaction_preferences = transaction_prefs
+            settings.dashboard_preferences = json.dumps(dashboard_prefs)
+            settings.report_preferences = json.dumps(report_prefs)
+            settings.transaction_preferences = json.dumps(transaction_prefs)
 
+            # Update primary account
+            primary_account_id = request.form.get("primary_account_id")
+            if primary_account_id == "":
+                settings.primary_account_id = None
+            else:
+                # Verify user has access to this account
+                accessible_account_ids = [acc.id for acc in accessible_accounts]
+                if primary_account_id in accessible_account_ids:
+                    settings.primary_account_id = primary_account_id
+                else:
+                    flash("You don't have access to the selected account.", "error")
+                    return redirect(url_for("user_settings"))
+
+            # Commit settings
             db_session.commit()
             flash("Settings updated successfully!", "success")
             return redirect(url_for("user_settings"))
@@ -3043,7 +3063,7 @@ def user_settings():
         return render_template(
             "user_settings.html",
             settings=settings,
-            mercury_accounts=mercury_accounts,
+            accessible_mercury_accounts=mercury_accounts,
             accessible_accounts=accessible_accounts,
         )
     finally:
