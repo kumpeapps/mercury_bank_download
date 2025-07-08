@@ -36,13 +36,15 @@ RUN pip install --upgrade pip && \
 # Copy the web app files (this layer changes most frequently, so put it last)
 COPY . /app/
 
-# Make health check script executable
+# Make scripts executable
 RUN chmod +x /app/health_check.py
-
-# Create a non-root user
-RUN useradd --create-home --shell /bin/bash app
-RUN chown -R app:app /app
 RUN chmod +x /app/start.sh
+RUN chmod +x /app/optimize_static_assets.sh
+RUN chmod +x /app/update_template_assets.py
+
+# Create a non-root user and prepare directories
+RUN useradd --create-home --shell /bin/bash app
+RUN mkdir -p /app/static && chown -R app:app /app
 
 # Expose port
 EXPOSE 5000

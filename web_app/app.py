@@ -45,7 +45,14 @@ from models.transaction import Transaction
 from models.transaction_attachment import TransactionAttachment
 from models.system_setting import SystemSetting
 from models.budget import Budget, BudgetCategory
+from models.role import Role
 from models.base import Base
+
+# Import performance configuration
+from performance_config import apply_performance_optimizations
+
+# Import optimized database configuration  
+from database_config import engine, Session, get_db_session, db_config
 
 # Sub-category helper functions
 def parse_category(category_string):
@@ -144,16 +151,31 @@ def format_category_display(category_string):
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "your-secret-key-change-this")
 
+# Performance optimizations for remote database usage
+app.config.update(
+    # Session configuration for better performance
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=8),  # 8 hour sessions
+    SESSION_COOKIE_SECURE=False,  # Set to True in production with HTTPS
+    SESSION_COOKIE_HTTPONLY=True,  # Prevent XSS
+    SESSION_COOKIE_SAMESITE='Lax',  # CSRF protection
+    
+    # Reduce overhead 
+    SEND_FILE_MAX_AGE_DEFAULT=timedelta(hours=1),  # Cache static files
+    TEMPLATES_AUTO_RELOAD=False,  # Don't auto-reload templates in production
+    
+    # JSON configuration
+    JSON_SORT_KEYS=False,  # Don't sort JSON keys (faster)
+    JSONIFY_PRETTYPRINT_REGULAR=False,  # Compact JSON responses
+)
+
+# Apply automatic performance optimizations
+apply_performance_optimizations(app)
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Database configuration
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL", "mysql+pymysql://user:password@db:3306/mercury_bank"
-)
-engine = create_engine(DATABASE_URL)
-Session = sessionmaker(bind=engine)
+# Database configuration now handled by database_config.py
 
 
 # Define system settings initialization function
@@ -311,15 +333,30 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
+# Database session management
+@app.teardown_appcontext
+def close_db_session(error):
+    """Close database session at the end of each request."""
+    db_config.close_session()
+
+@app.before_request
+def before_request():
+    """Set up database session for each request."""
+    g.db_session = Session()
+
 
 @login_manager.user_loader
 def load_user(user_id):
     db_session = Session()
     try:
-        # Eagerly load the user and roles to avoid DetachedInstanceError
+        # Eagerly load the user with all necessary relationships to minimize queries
         user = (
             db_session.query(User)
-            .options(joinedload(User.roles))
+            .options(
+                joinedload(User.roles),
+                joinedload(User.mercury_accounts),
+                joinedload(User.restricted_accounts)
+            )
             .filter(User.id == int(user_id))
             .first()
         )
@@ -337,9 +374,8 @@ def load_user(user_id):
 @app.before_request
 def check_user_permissions():
     """
-    Check if the current user still has valid permissions on every request.
-    If a logged-in user loses the 'user' role or gains the 'locked' role,
-    they will be automatically logged out.
+    Optimized permission check that reduces database queries for remote connections.
+    Only checks permissions periodically and for sensitive routes.
     """
     # Skip permission checks for certain routes
     skip_routes = ["login", "register", "static", "logout", "health", "index"]
@@ -350,54 +386,45 @@ def check_user_permissions():
 
     # Only check permissions if user is logged in
     if current_user.is_authenticated:
-        db_session = Session()
-        try:
-            # Re-query the user to get fresh data from the database
-            fresh_user = db_session.query(User).get(current_user.id)
+        # Use session counters to reduce frequency of DB checks
+        session_check_count = session.get('permission_check_count', 0)
+        is_sensitive_route = request.endpoint in ['admin_users', 'admin_settings', 'accounts', 'delete_account']
+        
+        # Check permissions every 10th request or on sensitive routes
+        if session_check_count % 10 == 0 or is_sensitive_route:
+            db_session = Session()
+            try:
+                # Efficient query to check if user has locked or user roles
+                user_roles = db_session.query(Role.name).join(User.roles).filter(
+                    User.id == current_user.id,
+                    Role.name.in_(['locked', 'user'])
+                ).all()
 
-            if fresh_user:
-                # Check if user has been locked
-                if fresh_user.has_role("locked"):
-                    logger.info(
-                        f"User {fresh_user.username} has been locked - logging out"
-                    )
+                role_names = [role.name for role in user_roles]
+                
+                if 'locked' in role_names:
+                    logger.info(f"User {current_user.username} has been locked - logging out")
                     logout_user()
-                    flash(
-                        "Your account has been locked. Please contact an administrator.",
-                        "error",
-                    )
+                    session.clear()
+                    flash("Your account has been locked. Please contact an administrator.", "error")
                     return redirect(url_for("login"))
 
-                # Check if user no longer has the user role
-                if not fresh_user.has_role("user"):
-                    logger.info(
-                        f"User {fresh_user.username} no longer has 'user' role - logging out"
-                    )
+                if 'user' not in role_names:
+                    logger.info(f"User {current_user.username} no longer has 'user' role - logging out")
                     logout_user()
-                    flash(
-                        "Your account permissions have changed. Please contact an administrator.",
-                        "error",
-                    )
+                    session.clear()
+                    flash("Your account no longer has the required permissions. Please contact an administrator.", "error")
                     return redirect(url_for("login"))
 
-            else:
-                # User not found in database - log them out
-                logger.info(
-                    f"User {current_user.id} not found in database - logging out"
-                )
-                logout_user()
-                flash(
-                    "Your account could not be found. Please contact an administrator.",
-                    "error",
-                )
-                return redirect(url_for("login"))
-
-        except Exception as e:
-            logger.error(f"Error checking user permissions: {e}")
-            # In case of database errors, don't log out the user unless it's critical
-            pass
-        finally:
-            db_session.close()
+            except Exception as e:
+                logger.error(f"Error checking user permissions: {e}")
+                # In case of database errors, don't log out the user unless it's critical
+                pass
+            finally:
+                db_session.close()
+        
+        # Update check counter
+        session['permission_check_count'] = session_check_count + 1
 
 
 # Helper functions for account access control
@@ -516,52 +543,102 @@ def get_gravatar_url(email, size=40, default="identicon"):
 # Template context processor to avoid DetachedInstanceError
 @app.context_processor
 def inject_user():
-    """Inject a session-bound user object for template use."""
+    """Inject a session-bound user object for template use with caching."""
     if current_user.is_authenticated:
-        db_session = Session()
-        try:
-            # Get a fresh copy of the user with all attributes loaded
-            user = db_session.query(User).filter_by(id=current_user.id).first()
-            if user:
-                # Force load any lazy attributes we might need in templates
-                _ = user.username  # This should load the attribute
-                # Store the session in Flask's g object for cleanup
-                g.template_db_session = db_session
-                return dict(template_user=user)
-        except Exception as e:
-            print(f"Error in context processor: {e}")
-            db_session.close()
+        # Use session-based caching to reduce DB queries
+        cache_key = f"template_user_{current_user.id}"
+        cache_count = session.get('template_cache_count', 0)
+        
+        # Only refresh user from DB every 20 requests to reduce remote DB load
+        if cache_count % 20 == 0 or cache_key not in session:
+            db_session = Session()
+            try:
+                # Get a fresh copy of the user with all relationships eagerly loaded
+                from sqlalchemy.orm import joinedload
+                user = db_session.query(User).options(
+                    joinedload(User.roles),  # Eagerly load roles to avoid lazy loading issues
+                    joinedload(User.mercury_accounts)  # Also load mercury accounts if needed
+                ).filter_by(id=current_user.id).first()
+                
+                if user:
+                    # Cache essential user data in session to avoid repeated DB hits
+                    session[cache_key] = {
+                        'id': user.id,
+                        'username': user.username,
+                        'email': user.email,
+                        'roles': [role.name for role in user.roles],
+                        'mercury_account_ids': [ma.id for ma in user.mercury_accounts]
+                    }
+                    # Store the session in Flask's g object for cleanup
+                    g.template_db_session = db_session
+                    session['template_cache_count'] = cache_count + 1
+                    return dict(template_user=user)
+                else:
+                    db_session.close()
+                    return dict(template_user=current_user)
+            except Exception as e:
+                print(f"Error in context processor: {e}")
+                db_session.close()
+                return dict(template_user=current_user)
+        else:
+            # Use cached data, increment counter
+            session['template_cache_count'] = cache_count + 1
             return dict(template_user=current_user)
-        # Return the session-bound user
-        return dict(template_user=user)
+        
     return dict(template_user=None)
 
 
 @app.context_processor
 def inject_branding():
-    """Inject branding settings for template use."""
-    try:
-        db_session = Session()
-        app_name = SystemSetting.get_value(
-            db_session, "app_name", "Mercury Bank Integration"
-        )
-        app_description = SystemSetting.get_value(
-            db_session,
-            "app_description",
-            "Mercury Bank data synchronization and management platform",
-        )
-        logo_url = SystemSetting.get_value(db_session, "logo_url", "")
-        db_session.close()
+    """Inject branding settings for template use with caching."""
+    # Cache branding settings in session to avoid repeated DB queries
+    branding_cache_key = 'branding_settings'
+    cache_count = session.get('branding_cache_count', 0)
+    
+    # Only refresh from DB every 50 requests (branding rarely changes)
+    if cache_count % 50 == 0 or branding_cache_key not in session:
+        try:
+            db_session = Session()
+            app_name = SystemSetting.get_value(
+                db_session, "app_name", "Mercury Bank Integration"
+            )
+            app_description = SystemSetting.get_value(
+                db_session,
+                "app_description",
+                "Mercury Bank data synchronization and management platform",
+            )
+            logo_url = SystemSetting.get_value(db_session, "logo_url", "")
+            db_session.close()
 
+            # Cache in session
+            session[branding_cache_key] = {
+                'app_name': app_name,
+                'app_description': app_description,
+                'logo_url': logo_url
+            }
+            session['branding_cache_count'] = cache_count + 1
+
+            return dict(
+                app_name=app_name, app_description=app_description, logo_url=logo_url
+            )
+        except Exception as e:
+            print(f"Error getting branding settings: {e}")
+            # Use defaults if DB fails
+            defaults = {
+                'app_name': "Mercury Bank Integration",
+                'app_description': "Mercury Bank data synchronization and management platform",
+                'logo_url': ""
+            }
+            session[branding_cache_key] = defaults
+            return dict(**defaults)
+    else:
+        # Use cached branding settings
+        session['branding_cache_count'] = cache_count + 1
+        cached_branding = session.get(branding_cache_key, {})
         return dict(
-            app_name=app_name, app_description=app_description, logo_url=logo_url
-        )
-    except Exception as e:
-        print(f"Error getting branding settings: {e}")
-        return dict(
-            app_name="Mercury Bank Integration",
-            app_description="Mercury Bank data synchronization and management platform",
-            logo_url="",
+            app_name=cached_branding.get('app_name', "Mercury Bank Integration"),
+            app_description=cached_branding.get('app_description', "Mercury Bank data synchronization and management platform"),
+            logo_url=cached_branding.get('logo_url', "")
         )
 
 
@@ -921,11 +998,16 @@ def login():
 
         db_session = Session()
         try:
-            user = db_session.query(User).filter_by(username=username).first()
+            # Optimized query: get user with roles in single query
+            user = db_session.query(User).options(
+                joinedload(User.roles)  # Eager load roles to avoid additional queries
+            ).filter_by(username=username).first()
 
             if user and user.check_password(password):
-                # Check if user has the locked role
-                if user.has_role("locked"):
+                # Check roles efficiently (already loaded)
+                user_roles = [role.name for role in user.roles]
+                
+                if "locked" in user_roles:
                     flash(
                         "Your account has been locked. Please contact an administrator.",
                         "error",
@@ -940,7 +1022,7 @@ def login():
                     )
 
                 # Check if user has the user role (required for basic access)
-                if not user.has_role("user"):
+                if "user" not in user_roles:
                     flash(
                         "Your account does not have the required permissions. Please contact an administrator.",
                         "error",
@@ -954,6 +1036,11 @@ def login():
                         == "true",
                     )
 
+                # Initialize session counters for performance optimization
+                session['permission_check_count'] = 0
+                session['template_cache_count'] = 0
+                session['branding_cache_count'] = 0
+                
                 login_user(user)
                 flash("Logged in successfully!", "success")
                 return redirect(url_for("dashboard"))
@@ -1118,19 +1205,16 @@ def logout():
 def dashboard():
     db_session = Session()
     try:
-        # Get current user from this session to avoid DetachedInstanceError
+        # Get current user from this session with all needed relationships in one query
         current_user_id = current_user.id
-        user = db_session.query(User).get(current_user_id)
+        user = db_session.query(User).options(
+            joinedload(User.mercury_accounts),  # Eager load mercury accounts
+            joinedload(User.restricted_accounts)  # Eager load account restrictions
+        ).get(current_user_id)
+        
         if not user:
             flash("User not found", "error")
             return redirect(url_for("login"))
-
-        # Get user's Mercury accounts
-        all_mercury_accounts = (
-            db_session.query(MercuryAccount)
-            .filter(MercuryAccount.users.contains(user))
-            .all()
-        )
 
         # Get or create user settings
         user_settings = (
@@ -1140,6 +1224,9 @@ def dashboard():
             user_settings = UserSettings(user_id=current_user_id)
             db_session.add(user_settings)
             db_session.commit()
+
+        # Get all mercury accounts (already loaded via joinedload)
+        all_mercury_accounts = user.mercury_accounts
 
         # If user has a primary Mercury account, filter to that account by default
         # unless they specifically request to see all accounts
@@ -1157,12 +1244,7 @@ def dashboard():
         else:
             mercury_accounts = all_mercury_accounts
 
-        # Get summary statistics
-        total_accounts = 0
-        total_balance = 0
-        recent_transactions = []
-
-        # Get accessible accounts for this user (respects account restrictions)
+        # Get accessible accounts for this user in one optimized query (respects account restrictions)
         accessible_accounts = get_user_accessible_accounts(user, db_session)
 
         # If user has a primary account set, filter to just that account (unless showing all)
@@ -1178,6 +1260,11 @@ def dashboard():
             if primary_account:
                 accessible_accounts = [primary_account]
 
+        # Calculate summary statistics efficiently
+        total_accounts = 0
+        total_balance = 0
+        account_ids_for_transactions = []
+
         # Filter accessible accounts to match the selected mercury account(s)
         for mercury_account in mercury_accounts:
             mercury_account_accessible_accounts = [
@@ -1190,32 +1277,29 @@ def dashboard():
             for account in mercury_account_accessible_accounts:
                 if account.balance:
                     total_balance += account.balance
+                account_ids_for_transactions.append(account.id)
 
-                # Get recent transactions
-                from sqlalchemy import case, desc, asc
-
-                effective_date = case(
-                    (Transaction.posted_at.isnot(None), Transaction.posted_at),
-                    else_=Transaction.created_at,
+        # Get recent transactions in a single optimized query
+        recent_transactions = []
+        if account_ids_for_transactions:
+            from sqlalchemy import case, desc, asc
+            
+            effective_date = case(
+                (Transaction.posted_at.isnot(None), Transaction.posted_at),
+                else_=Transaction.created_at,
+            )
+            recent_transactions = (
+                db_session.query(Transaction)
+                .options(joinedload(Transaction.account))  # Eagerly load account relationship
+                .filter(Transaction.account_id.in_(account_ids_for_transactions))
+                .order_by(
+                    # Pending transactions first, then by effective date
+                    asc(Transaction.posted_at.isnot(None)),
+                    desc(effective_date),
                 )
-                transactions = (
-                    db_session.query(Transaction)
-                    .filter_by(account_id=account.id)
-                    .order_by(
-                        # Pending transactions first, then by effective date
-                        asc(Transaction.posted_at.isnot(None)),
-                        desc(effective_date),
-                    )
-                    .limit(5)
-                    .all()
-                )
-                recent_transactions.extend(transactions)
-
-        # Sort recent transactions by effective date (posted_at or created_at)
-        recent_transactions.sort(
-            key=lambda x: x.posted_at or x.created_at, reverse=True
-        )
-        recent_transactions = recent_transactions[:10]
+                .limit(10)  # Get top 10 directly instead of processing more
+                .all()
+            )
 
         return render_template(
             "dashboard.html",
@@ -1499,8 +1583,10 @@ def transactions():
             get_available_months(db_session, account_ids) if account_ids else []
         )
 
-        # Build query
-        query = db_session.query(Transaction).filter(
+        # Build query with eager loading to avoid DetachedInstanceError
+        query = db_session.query(Transaction).options(
+            joinedload(Transaction.account)  # Eagerly load account relationship
+        ).filter(
             Transaction.account_id.in_(account_ids)
         )
 
@@ -2733,9 +2819,8 @@ def edit_user_roles(user_id):
 
 @app.route("/admin/users/<int:user_id>/settings", methods=["GET", "POST"])
 @login_required
-@super_admin_required
 def edit_user_settings(user_id):
-    """Edit settings for a user - super-admin only."""
+    """Admin route to edit user settings"""
     db_session = Session()
     try:
         # Get current user in session to avoid DetachedInstanceError
@@ -2762,15 +2847,11 @@ def edit_user_settings(user_id):
             db_session.add(settings)
             db_session.commit()
 
-        # Get available Mercury accounts for this user
-        mercury_accounts = (
-            db_session.query(MercuryAccount)
-            .filter(MercuryAccount.users.contains(user))
-            .all()
-        )
-
-        # Get user's accessible accounts for primary account selection
-        accessible_accounts = get_user_accessible_accounts(user, db_session)
+        # Get accessible Mercury accounts for this user
+        mercury_accounts = get_user_accessible_accounts(user, db_session)
+        
+        # Get accessible accounts for this user
+        accessible_accounts = user.get_accessible_accounts(db_session)
 
         if request.method == "POST":
             # Update primary Mercury account
@@ -2803,8 +2884,8 @@ def edit_user_settings(user_id):
             else:
                 # Verify user has access to this account
                 accessible_account_ids = [acc.id for acc in accessible_accounts]
-                if primary_account_id in accessible_account_ids:
-                    settings.primary_account_id = primary_account_id
+                if int(primary_account_id) in accessible_account_ids:
+                    settings.primary_account_id = int(primary_account_id)
                 else:
                     flash(
                         f"User '{user.username}' doesn't have access to the selected account.",
@@ -2818,42 +2899,8 @@ def edit_user_settings(user_id):
                         accessible_accounts=accessible_accounts,
                     )
 
-            # Update other preferences
-            dashboard_prefs = {}
-            report_prefs = {}
-            transaction_prefs = {}
-
-            # Dashboard preferences
-            if request.form.get("dashboard_show_pending") == "on":
-                dashboard_prefs["show_pending"] = True
-            else:
-                dashboard_prefs["show_pending"] = False
-
-            # Report preferences
-            report_prefs["default_view"] = request.form.get(
-                "report_default_view", "charts"
-            )
-            report_prefs["default_period"] = request.form.get(
-                "report_default_period", "12"
-            )
-
-            # Transaction preferences
-            transaction_prefs["default_page_size"] = int(
-                request.form.get("transaction_page_size", "50")
-            )
-            transaction_prefs["default_status_filter"] = request.form.getlist(
-                "transaction_default_status"
-            )
-
-            # Update settings
-            settings.dashboard_preferences = dashboard_prefs
-            settings.report_preferences = report_prefs
-            settings.transaction_preferences = transaction_prefs
-
             db_session.commit()
-            flash(
-                f"Settings updated successfully for user '{user.username}'!", "success"
-            )
+            flash(f"Settings updated successfully for user '{user.username}'.", "success")
             return redirect(url_for("admin_users"))
 
         return render_template(
@@ -2866,7 +2913,7 @@ def edit_user_settings(user_id):
 
     except Exception as e:
         db_session.rollback()
-        flash(f"Error updating user settings: {str(e)}", "error")
+        flash(f"Error managing user settings: {str(e)}", "error")
         return redirect(url_for("admin_users"))
     finally:
         db_session.close()
@@ -3032,10 +3079,24 @@ def user_settings():
             )
 
             # Update settings
-            settings.dashboard_preferences = dashboard_prefs
-            settings.report_preferences = report_prefs
-            settings.transaction_preferences = transaction_prefs
+            settings.dashboard_preferences = json.dumps(dashboard_prefs)
+            settings.report_preferences = json.dumps(report_prefs)
+            settings.transaction_preferences = json.dumps(transaction_prefs)
 
+            # Update primary account
+            primary_account_id = request.form.get("primary_account_id")
+            if primary_account_id == "":
+                settings.primary_account_id = None
+            else:
+                # Verify user has access to this account
+                accessible_account_ids = [acc.id for acc in accessible_accounts]
+                if primary_account_id in accessible_account_ids:
+                    settings.primary_account_id = primary_account_id
+                else:
+                    flash("You don't have access to the selected account.", "error")
+                    return redirect(url_for("user_settings"))
+
+            # Commit settings
             db_session.commit()
             flash("Settings updated successfully!", "success")
             return redirect(url_for("user_settings"))
@@ -3043,7 +3104,7 @@ def user_settings():
         return render_template(
             "user_settings.html",
             settings=settings,
-            mercury_accounts=mercury_accounts,
+            accessible_mercury_accounts=mercury_accounts,
             accessible_accounts=accessible_accounts,
         )
     finally:
@@ -3754,8 +3815,11 @@ def budgets():
         # Get user's accessible mercury accounts
         mercury_account_ids = [ma.id for ma in fresh_user.mercury_accounts]
         
-        # Get budgets for accessible mercury accounts
-        budget_list = db_session.query(Budget).filter(
+        # Get budgets for accessible mercury accounts with eager loading
+        budget_list = db_session.query(Budget).options(
+            joinedload(Budget.mercury_account),  # Eagerly load mercury_account relationship
+            joinedload(Budget.accounts)  # Eagerly load accounts relationship
+        ).filter(
             Budget.mercury_account_id.in_(mercury_account_ids),
             Budget.is_active == True
         ).order_by(Budget.budget_month.desc(), Budget.name).all()
@@ -3822,8 +3886,11 @@ def budget_reports():
         
         mercury_account_ids = [ma.id for ma in mercury_accounts]
         
-        # Get budgets for the selected month and mercury accounts
-        budget_list = db_session.query(Budget).filter(
+        # Get budgets for the selected month and mercury accounts with eager loading
+        budget_list = db_session.query(Budget).options(
+            joinedload(Budget.mercury_account),  # Eagerly load mercury_account relationship
+            joinedload(Budget.accounts)  # Eagerly load accounts relationship
+        ).filter(
             Budget.mercury_account_id.in_(mercury_account_ids),
             Budget.budget_month == budget_month,
             Budget.is_active == True
@@ -4038,8 +4105,11 @@ def edit_budget(budget_id):
             flash("Access denied. You don't have permission to edit budgets.", "error")
             return redirect(url_for("dashboard"))
         
-        # Get the budget
-        budget = db_session.query(Budget).filter(
+        # Get the budget with eager loading to avoid DetachedInstanceError
+        budget = db_session.query(Budget).options(
+            joinedload(Budget.mercury_account),  # Eagerly load mercury_account relationship
+            joinedload(Budget.accounts)  # Eagerly load accounts relationship
+        ).filter(
             Budget.id == budget_id,
             Budget.is_active == True
         ).first()
@@ -4213,8 +4283,11 @@ def copy_budget(budget_id):
             flash("Access denied. You don't have permission to copy budgets.", "error")
             return redirect(url_for("dashboard"))
         
-        # Get the source budget
-        source_budget = db_session.query(Budget).filter(
+        # Get the source budget with eager loading to avoid DetachedInstanceError
+        source_budget = db_session.query(Budget).options(
+            joinedload(Budget.mercury_account),  # Eagerly load mercury_account relationship
+            joinedload(Budget.accounts)  # Eagerly load accounts relationship
+        ).filter(
             Budget.id == budget_id,
             Budget.is_active == True
         ).first()
@@ -4309,8 +4382,11 @@ def delete_budget(budget_id):
             flash("Access denied. You don't have permission to delete budgets.", "error")
             return redirect(url_for("dashboard"))
         
-        # Get the budget
-        budget = db_session.query(Budget).filter(
+        # Get the budget with eager loading to avoid DetachedInstanceError
+        budget = db_session.query(Budget).options(
+            joinedload(Budget.mercury_account),  # Eagerly load mercury_account relationship
+            joinedload(Budget.accounts)  # Eagerly load accounts relationship
+        ).filter(
             Budget.id == budget_id,
             Budget.is_active == True
         ).first()

@@ -7,6 +7,10 @@ set -e  # Exit on any error
 
 echo "🚀 Starting Mercury Bank Web Application..."
 
+# Auto-optimize static assets for performance
+echo "🎯 Auto-optimizing static assets..."
+./optimize_static_assets.sh
+
 # Wait for database to be ready
 echo "⏳ Waiting for database to be ready..."
 max_attempts=30
@@ -45,6 +49,10 @@ fi
 
 # Database initialization is handled by the sync service
 echo "ℹ️  Database schema is managed by the sync service"
+
+# Optimize database performance
+echo "🔧 Optimizing database performance..."
+python optimize_database.py || echo "⚠️  Database optimization failed - continuing anyway"
 
 # Initialize system roles (backup in case sync service hasn't run)
 echo "🔧 Ensuring system roles are initialized..."

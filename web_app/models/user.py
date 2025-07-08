@@ -416,9 +416,12 @@ class User(Base):
         
         # Otherwise, return all accounts from all mercury accounts the user has access to
         from .account import Account
+        from sqlalchemy.orm import joinedload
         accessible_accounts = []
         for mercury_account in self.mercury_accounts:
-            accounts = db_session.query(Account).filter_by(mercury_account_id=mercury_account.id).all()
+            accounts = db_session.query(Account).options(
+                joinedload(Account.mercury_account)  # Eagerly load mercury_account relationship
+            ).filter_by(mercury_account_id=mercury_account.id).all()
             accessible_accounts.extend(accounts)
         
         return accessible_accounts

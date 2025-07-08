@@ -28,3 +28,4 @@ services:
       - /app/__pycache__
       - /app/models/__pycache__
       - /app/utils/__pycache__
+      - /app/static
