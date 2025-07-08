@@ -239,3 +239,8 @@ docker-compose.yml
 private_*.*
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,linux,python,venv,dotenv
+
+.static_downloaded
+# Static files downloaded by the web app
+# This file is used to track static files that have been downloaded by the web app.
+# It is not meant to be committed to version control.

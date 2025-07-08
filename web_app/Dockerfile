@@ -42,9 +42,9 @@ RUN chmod +x /app/start.sh
 RUN chmod +x /app/optimize_static_assets.sh
 RUN chmod +x /app/update_template_assets.py
 
-# Create a non-root user
+# Create a non-root user and prepare directories
 RUN useradd --create-home --shell /bin/bash app
-RUN chown -R app:app /app
+RUN mkdir -p /app/static && chown -R app:app /app
 
 # Expose port
 EXPOSE 5000

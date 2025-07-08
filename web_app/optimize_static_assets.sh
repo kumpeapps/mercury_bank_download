@@ -16,11 +16,14 @@ fi
 
 echo "🚀 Auto-optimizing static assets for better performance..."
 
-# Create static directories
+# Create static directories with proper permissions
+mkdir -p "${STATIC_DIR}"
+chmod 755 "${STATIC_DIR}"
 mkdir -p "${STATIC_DIR}/css"
 mkdir -p "${STATIC_DIR}/js" 
 mkdir -p "${STATIC_DIR}/fonts"
 mkdir -p "${STATIC_DIR}/webfonts"
+chmod 755 "${STATIC_DIR}"/{css,js,fonts,webfonts}
 
 # Function to download with retries
 download_with_retry() {
