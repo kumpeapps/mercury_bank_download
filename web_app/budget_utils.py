@@ -52,13 +52,15 @@ def get_budget_progress(session: Session, budget: Budget) -> Dict[str, Any]:
     # Calculate progress for each category
     for category in budget_categories:
         # Get actual spending for this category in the budget month
+        # Exclude failed transactions from budget calculations
         spent_amount = session.query(func.sum(Transaction.amount)).filter(
             and_(
                 Transaction.account_id.in_(account_ids),
                 Transaction.mercury_category == category.category_name,
                 extract('year', Transaction.posted_at) == budget.budget_month.year,
                 extract('month', Transaction.posted_at) == budget.budget_month.month,
-                Transaction.amount < 0  # Expenses are negative
+                Transaction.amount < 0,  # Expenses are negative
+                Transaction.status != 'failed'  # Exclude failed transactions
             )
         ).scalar() or 0.0
         

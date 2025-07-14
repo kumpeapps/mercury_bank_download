@@ -1946,10 +1946,11 @@ def budget_data():
         ]
 
         # Add status filter if not including pending
+        # Always exclude failed transactions from budget calculations
         if not include_pending:
-            filters.append(Transaction.status.in_(["sent"]))
+            filters.append(Transaction.status.in_(["sent", "posted"]))
         else:
-            filters.append(Transaction.status.in_(["sent", "pending"]))
+            filters.append(Transaction.status.in_(["sent", "pending", "posted"]))
 
         # Query transactions grouped by month and category (note field)
         # Use created_at for pending transactions (where posted_at is null), posted_at for completed
@@ -2114,10 +2115,11 @@ def expense_breakdown():
         ]
 
         # Add status filter if not including pending
+        # Always exclude failed transactions from expense calculations
         if not include_pending:
-            filters.append(Transaction.status.in_(["sent"]))
+            filters.append(Transaction.status.in_(["sent", "posted"]))
         else:
-            filters.append(Transaction.status.in_(["sent", "pending"]))
+            filters.append(Transaction.status.in_(["sent", "pending", "posted"]))
 
         # Query expenses by category
         expenses = (
@@ -3478,12 +3480,14 @@ def calculate_budget_progress(db_session, budget):
         }
     
     # Query transactions for the budget period using effective date
+    # Exclude failed transactions from budget calculations
     effective_date = func.coalesce(Transaction.posted_at, Transaction.created_at)
     transactions = db_session.query(Transaction).filter(
         Transaction.account_id.in_(account_ids),
         effective_date >= budget_month,
         effective_date < next_month,
-        Transaction.amount < 0  # Only expenses (negative amounts)
+        Transaction.amount < 0,  # Only expenses (negative amounts)
+        Transaction.status != 'failed'  # Exclude failed transactions
     ).all()
     
     # Calculate spending by category using transaction notes
@@ -3556,7 +3560,8 @@ def get_budget_report_data(db_session, budget):
     all_transactions = db_session.query(Transaction).filter(
         Transaction.account_id.in_(account_ids),
         effective_date >= budget_month,
-        effective_date < next_month
+        effective_date < next_month,
+        Transaction.status != 'failed'  # Exclude failed transactions from budget calculations
     ).all()
 
     # Group ALL transactions by main category (handling both positive and negative amounts)
