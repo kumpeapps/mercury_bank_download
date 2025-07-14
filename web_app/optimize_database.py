@@ -25,11 +25,14 @@ def optimize_database():
         
         # Transaction table optimizations (most important for performance)
         "CREATE INDEX IF NOT EXISTS idx_transactions_account_id ON transactions(account_id)",
-        "CREATE INDEX IF NOT EXISTS idx_transactions_transaction_date ON transactions(transaction_date)",
-        "CREATE INDEX IF NOT EXISTS idx_transactions_account_date ON transactions(account_id, transaction_date DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_posted_at ON transactions(posted_at)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_account_posted ON transactions(account_id, posted_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_account_created ON transactions(account_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_transactions_amount ON transactions(amount)",
-        "CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_note ON transactions(note)",
         "CREATE INDEX IF NOT EXISTS idx_transactions_description ON transactions(description)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)",
         
         # Account table optimizations
         "CREATE INDEX IF NOT EXISTS idx_accounts_mercury_account_id ON accounts(mercury_account_id)",
@@ -38,7 +41,8 @@ def optimize_database():
         
         # Mercury account optimizations
         "CREATE INDEX IF NOT EXISTS idx_mercury_accounts_name ON mercury_accounts(name)",
-        "CREATE INDEX IF NOT EXISTS idx_mercury_accounts_status ON mercury_accounts(status)",
+        "CREATE INDEX IF NOT EXISTS idx_mercury_accounts_is_active ON mercury_accounts(is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_mercury_accounts_sync_enabled ON mercury_accounts(sync_enabled)",
         
         # Transaction attachments optimizations
         "CREATE INDEX IF NOT EXISTS idx_transaction_attachments_transaction_id ON transaction_attachments(transaction_id)",
@@ -47,13 +51,15 @@ def optimize_database():
         "CREATE INDEX IF NOT EXISTS idx_user_settings_user_id ON user_settings(user_id)",
         
         # Budget optimizations
-        "CREATE INDEX IF NOT EXISTS idx_budgets_user_id ON budgets(user_id)",
-        "CREATE INDEX IF NOT EXISTS idx_budgets_start_date ON budgets(start_date)",
+        "CREATE INDEX IF NOT EXISTS idx_budgets_mercury_account_id ON budgets(mercury_account_id)",
+        "CREATE INDEX IF NOT EXISTS idx_budgets_budget_month ON budgets(budget_month)",
+        "CREATE INDEX IF NOT EXISTS idx_budgets_is_active ON budgets(is_active)",
         "CREATE INDEX IF NOT EXISTS idx_budget_categories_budget_id ON budget_categories(budget_id)",
         
         # Composite indexes for common query patterns
-        "CREATE INDEX IF NOT EXISTS idx_transactions_user_account_date ON transactions(account_id, transaction_date DESC, amount)",
-        "CREATE INDEX IF NOT EXISTS idx_transactions_category_date ON transactions(category, transaction_date DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_account_posted_amount ON transactions(account_id, posted_at DESC, amount)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_note_posted ON transactions(note, posted_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_status_posted ON transactions(status, posted_at DESC)",
         
         # Optimize MySQL settings for better performance
         "SET GLOBAL innodb_flush_log_at_trx_commit = 2",
