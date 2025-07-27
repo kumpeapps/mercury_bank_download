@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 from sqlalchemy import create_engine, or_
 from sqlalchemy.orm import sessionmaker, scoped_session
+from timezone_fix import get_utc_now
 
 # Set up proper imports that work both in container and local development
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -58,7 +59,7 @@ def create_missing_receipt_policies():
                     ReceiptPolicy.account_id == account.id,
                     or_(
                         ReceiptPolicy.end_date.is_(None),
-                        ReceiptPolicy.end_date >= datetime.now()
+                        ReceiptPolicy.end_date >= get_utc_now()
                     )
                 )
                 .first()

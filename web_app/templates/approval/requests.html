@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+
+{% block title %}Approval Requests{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Approval Requests</h1>
+        <div>
+            <form action="{{ url_for('re_evaluate_approvals') }}" method="POST" style="display: inline;" 
+                  onsubmit="return confirm('Re-evaluate all approvals? This will check if previously approved transactions are still valid based on current categories and merchant names.');">
+                <button type="submit" class="btn btn-warning me-2" title="Re-evaluate all approvals based on current transaction data">
+                    <i class="fas fa-sync fa-sm text-white-50"></i> Re-evaluate Approvals
+                </button>
+            </form>
+            <a href="{{ url_for('create_approval_request') }}" class="btn btn-primary">
+                <i class="fas fa-plus fa-sm text-white-50"></i> New Request
+            </a>
+        </div>
+    </div>
+
+    <!-- Filter Tabs -->
+    <ul class="nav nav-tabs mb-4">
+        <li class="nav-item">
+            <a class="nav-link {% if status_filter == 'all' %}active{% endif %}" 
+               href="{{ url_for('approval_requests', status='all') }}">
+                All Requests
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if status_filter == 'pending' %}active{% endif %}" 
+               href="{{ url_for('approval_requests', status='pending') }}">
+                Pending
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if status_filter == 'approved' %}active{% endif %}" 
+               href="{{ url_for('approval_requests', status='approved') }}">
+                Approved
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if status_filter == 'denied' %}active{% endif %}" 
+               href="{{ url_for('approval_requests', status='denied') }}">
+                Denied
+            </a>
+        </li>
+    </ul>
+
+    {% if requests %}
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">
+                {% if status_filter == 'all' %}All Requests{% else %}{{ status_filter.title() }} Requests{% endif %}
+            </h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>Account</th>
+                            <th>Requested By</th>
+                            <th>Request Details</th>
+                            <th>Approval Period</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for request in requests %}
+                        <tr style="cursor: pointer;" onclick="showRequestDetails({{ request.id }})">
+                            <td>{{ request.restriction.mercury_account.name if request.restriction.mercury_account else 'Unknown' }}</td>
+                            <td>
+                                {{ request.requested_by.first_name }} {{ request.requested_by.last_name }}
+                                <br><small class="text-muted">{{ request.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                            </td>
+                            <td>
+                                <div class="mb-1">
+                                    <strong>Amount:</strong> 
+                                    {% if request.max_amount %}
+                                        ${{ "{:,.2f}".format(request.max_amount) }}
+                                    {% else %}
+                                        <span class="text-muted">No limit</span>
+                                    {% endif %}
+                                </div>
+                                <div class="mb-1">
+                                    <strong>Transactions:</strong> 
+                                    {% if request.max_transactions %}
+                                        {{ request.max_transactions }}
+                                    {% else %}
+                                        <span class="text-muted">No limit</span>
+                                    {% endif %}
+                                </div>
+                                {% if request.category_filter %}
+                                <div class="mb-1">
+                                    <strong>Category:</strong> {{ request.category_filter }}
+                                </div>
+                                {% endif %}
+                                {% if request.request_reason %}
+                                <div class="text-muted small">
+                                    <strong>Reason:</strong> {{ request.request_reason[:100] }}{% if request.request_reason|length > 100 %}...{% endif %}
+                                </div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ request.approval_start_date.strftime('%Y-%m-%d') }} -
+                                {{ request.approval_end_date.strftime('%Y-%m-%d') }}
+                            </td>
+                            <td>
+                                {% if request.status == 'pending' %}
+                                    <span class="badge bg-warning text-dark">Pending</span>
+                                {% elif request.status == 'approved' %}
+                                    <span class="badge bg-success">Approved</span>
+                                {% elif request.status == 'denied' %}
+                                    <span class="badge bg-danger">Denied</span>
+                                {% elif request.status == 'expired' %}
+                                    <span class="badge bg-secondary">Expired</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">{{ request.status or 'Pending' }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if request.status == 'pending' %}
+                                    <!-- Check if current user can approve this request -->
+                                    {% set can_approve = current_user.has_role('super-admin') or current_user.id in request.restriction.get_approver_list() %}
+                                    {% if can_approve %}
+                                        <button type="button" class="btn btn-sm btn-success" 
+                                                onclick="event.stopPropagation(); showApprovalModal({{ request.id }}, 'approve')">
+                                            <i class="fas fa-check"></i> Approve
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-danger" 
+                                                onclick="event.stopPropagation(); showApprovalModal({{ request.id }}, 'deny')">
+                                            <i class="fas fa-times"></i> Deny
+                                        </button>
+                                    {% else %}
+                                        <span class="text-muted">Waiting for approval</span>
+                                    {% endif %}
+                                {% else %}
+                                    <button type="button" class="btn btn-sm btn-outline-info" 
+                                            onclick="event.stopPropagation(); showRequestDetails({{ request.id }})">
+                                        <i class="fas fa-eye"></i> View
+                                    </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card shadow mb-4">
+        <div class="card-body text-center">
+            <div class="text-gray-500 mb-4">
+                <i class="fas fa-clipboard-list fa-3x"></i>
+            </div>
+            <h5 class="card-title">No Approval Requests</h5>
+            <p class="card-text">
+                {% if status_filter == 'all' %}
+                    No approval requests have been submitted yet.
+                {% else %}
+                    No {{ status_filter }} requests found.
+                {% endif %}
+            </p>
+            {% if status_filter == 'all' %}
+            <a href="{{ url_for('create_approval_request') }}" class="btn btn-primary">
+                <i class="fas fa-plus fa-sm text-white-50"></i> Create Your First Request
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Approval/Denial Modal -->
+<div class="modal fade" id="approvalModal" tabindex="-1" role="dialog" aria-labelledby="approvalModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="approvalModalLabel">Approve Request</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="approvalForm" method="POST">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="approval_notes">Notes (Optional)</label>
+                        <textarea class="form-control" id="approval_notes" name="approval_notes" rows="3" 
+                                  placeholder="Add any notes about this decision..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn" id="approvalSubmitBtn">Approve</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Request Details Modal -->
+<div class="modal fade" id="detailsModal" tabindex="-1" role="dialog" aria-labelledby="detailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailsModalLabel">Request Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="detailsContent">
+                <!-- Request details will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showApprovalModal(requestId, action) {
+    console.log('showApprovalModal called with:', requestId, action);
+    const modal = document.getElementById('approvalModal');
+    const form = document.getElementById('approvalForm');
+    const title = document.getElementById('approvalModalLabel');
+    const submitBtn = document.getElementById('approvalSubmitBtn');
+    
+    if (action === 'approve') {
+        title.textContent = 'Approve Request';
+        submitBtn.textContent = 'Approve';
+        submitBtn.className = 'btn btn-success';
+        form.action = `/approval/requests/${requestId}/approve`;
+    } else {
+        title.textContent = 'Deny Request';
+        submitBtn.textContent = 'Deny';
+        submitBtn.className = 'btn btn-danger';
+        form.action = `/approval/requests/${requestId}/deny`;
+    }
+    
+    console.log('Form action set to:', form.action);
+    document.getElementById('approval_notes').value = '';
+    
+    // Use Bootstrap 5 modal API
+    const bootstrapModal = new bootstrap.Modal(modal, {
+        backdrop: true,
+        keyboard: true
+    });
+    bootstrapModal.show();
+}
+
+// Add form submission handler
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('approvalForm');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            console.log('Form submitted with action:', this.action);
+            console.log('Form method:', this.method);
+            // Don't prevent default - let the form submit normally
+        });
+    }
+});
+
+function showRequestDetails(requestId) {
+    console.log('showRequestDetails called with:', requestId);
+    // Load request details via AJAX
+    fetch(`/approval/requests/${requestId}/details`)
+        .then(response => {
+            console.log('Details response status:', response.status);
+            return response.json();
+        })
+        .then(data => {
+            console.log('Details response data:', data);
+            if (data.error) {
+                document.getElementById('detailsContent').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            } else {
+                const request = data.request;
+                const html = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="font-weight-bold">Request Information</h6>
+                            <table class="table table-sm">
+                                <tr><td><strong>ID:</strong></td><td>#${request.id}</td></tr>
+                                <tr><td><strong>Account:</strong></td><td>${request.account_name}</td></tr>
+                                <tr><td><strong>Requested By:</strong></td><td>${request.requested_by_name}</td></tr>
+                                <tr><td><strong>Created:</strong></td><td>${request.created_at}</td></tr>
+                                <tr><td><strong>Status:</strong></td><td><span class="badge bg-${request.status === 'pending' ? 'warning text-dark' : request.status === 'approved' ? 'success' : 'danger'}">${request.status.charAt(0).toUpperCase() + request.status.slice(1)}</span></td></tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="font-weight-bold">Approval Parameters</h6>
+                            <table class="table table-sm">
+                                <tr><td><strong>Max Amount:</strong></td><td>${request.max_amount ? '$' + request.max_amount.toLocaleString() : 'No limit'}</td></tr>
+                                <tr><td><strong>Max Transactions:</strong></td><td>${request.max_transactions || 'No limit'}</td></tr>
+                                <tr><td><strong>Start Date:</strong></td><td>${request.approval_start_date}</td></tr>
+                                <tr><td><strong>End Date:</strong></td><td>${request.approval_end_date}</td></tr>
+                                <tr><td><strong>Category Filter:</strong></td><td>${request.category_filter || 'Any'}</td></tr>
+                                <tr><td><strong>Subcategory Filter:</strong></td><td>${request.subcategory_filter || 'Any'}</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                    ${request.request_reason ? `
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h6 class="font-weight-bold">Request Reason</h6>
+                            <div class="bg-light p-3 rounded">${request.request_reason}</div>
+                        </div>
+                    </div>
+                    ` : ''}
+                    ${request.approval_notes ? `
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h6 class="font-weight-bold">Approval Notes</h6>
+                            <div class="bg-light p-3 rounded">${request.approval_notes}</div>
+                            <small class="text-muted">Approved by ${request.approved_by_name} on ${request.approval_decision_date}</small>
+                        </div>
+                    </div>
+                    ` : ''}
+                `;
+                document.getElementById('detailsContent').innerHTML = html;
+            }
+        })
+        .catch(error => {
+            console.error('Details fetch error:', error);
+            document.getElementById('detailsContent').innerHTML = `<div class="alert alert-danger">Error loading request details: ${error.message}</div>`;
+        });
+    
+    // Use Bootstrap 5 modal API
+    const detailsModal = new bootstrap.Modal(document.getElementById('detailsModal'), {
+        backdrop: true,
+        keyboard: true
+    });
+    detailsModal.show();
+}
+</script>
+{% endblock %}

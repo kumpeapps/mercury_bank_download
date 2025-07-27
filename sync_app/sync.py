@@ -600,6 +600,19 @@ class MercuryBankSyncer:
                                 if created_at:
                                     existing_transaction.created_at = created_at  # type: ignore[assignment]
 
+                                # Update approval status for existing transaction
+                                try:
+                                    existing_transaction.update_approval_status(db)
+                                    logger.debug(
+                                        "Updated approval status for existing transaction %s: %s", 
+                                        transaction_id, existing_transaction.approval_status
+                                    )
+                                except Exception as e:
+                                    logger.warning(
+                                        "Failed to update approval status for transaction %s: %s",
+                                        transaction_id, str(e)
+                                    )
+
                                 logger.debug("Updated transaction: %s", transaction_id)
                             else:
                                 # Create new transaction
@@ -670,6 +683,19 @@ class MercuryBankSyncer:
                                 logger.debug(
                                     "Created new transaction: %s", transaction_id
                                 )
+                                
+                                # Update approval status for new transaction
+                                try:
+                                    new_transaction.update_approval_status(db)
+                                    logger.debug(
+                                        "Updated approval status for new transaction %s: %s", 
+                                        transaction_id, new_transaction.approval_status
+                                    )
+                                except Exception as e:
+                                    logger.warning(
+                                        "Failed to update approval status for transaction %s: %s",
+                                        transaction_id, str(e)
+                                    )
 
                             # Sync attachments if the transaction has any
                             try:
@@ -1045,6 +1071,28 @@ class MercuryBankSyncer:
 
             # Then sync transactions
             transactions_synced = self.sync_transactions(days_back=days_back)
+
+            # Re-evaluate all approvals after sync to handle category/merchant changes
+            try:
+                from transaction_approval_manager import get_approval_manager
+                db = self.get_db_session()
+                try:
+                    approval_manager = get_approval_manager(db)
+                    approval_results = approval_manager.re_evaluate_all_approvals()
+                    
+                    logger.info(
+                        "Approval re-evaluation completed. "
+                        "Checked: %d, Deactivated: %d, Logs removed: %d, Transactions reverted: %d",
+                        approval_results['approvals_checked'],
+                        approval_results['approvals_deactivated'],
+                        approval_results['transaction_logs_removed'],
+                        approval_results['transactions_reverted']
+                    )
+                finally:
+                    db.close()
+            except Exception as e:
+                logger.error("Approval re-evaluation failed: %s", e)
+                # Don't fail the entire sync if approval re-evaluation fails
 
             logger.info(
                 "Synchronization completed successfully. "

@@ -8,5 +8,19 @@ from .mercury_account import MercuryAccount
 from .system_setting import SystemSetting
 from .user_settings import UserSettings
 from .budget import Budget, BudgetCategory
+from .role import Role
+from .transaction_approval import (
+    TransactionRestriction,
+    TransactionApprovalRequest,
+    TransactionApproval,
+    TransactionApprovalRule,
+    TransactionApprovalLog,
+    NotificationLog
+)
 
-__all__ = ['Base', 'ReceiptPolicy', 'Account', 'Transaction', 'TransactionAttachment', 'User', 'MercuryAccount', 'SystemSetting', 'UserSettings', 'Budget', 'BudgetCategory']
+__all__ = [
+    'Base', 'ReceiptPolicy', 'Account', 'Transaction', 'TransactionAttachment', 
+    'User', 'MercuryAccount', 'SystemSetting', 'UserSettings', 'Budget', 'BudgetCategory',
+    'Role', 'TransactionRestriction', 'TransactionApprovalRequest', 'TransactionApproval',
+    'TransactionApprovalRule', 'TransactionApprovalLog', 'NotificationLog'
+]

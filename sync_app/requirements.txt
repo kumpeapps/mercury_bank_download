@@ -4,6 +4,9 @@ pymysql
 cryptography
 alembic>=1.12.0
 
+# Timezone handling
+pytz
+
 # Security and authentication
 bcrypt>=4.0.0
 werkzeug>=2.0.0

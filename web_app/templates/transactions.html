@@ -226,6 +226,7 @@
                             <th>Type</th>
                             <th class="text-end">Amount</th>
                             <th>Status</th>
+                            <th>Approval</th>
                             <th>Receipt</th>
                         </tr>
                     </thead>
@@ -233,12 +234,11 @@
                     {% for transaction in transactions %}
                     <tr>
                         <td>
+                            {{ transaction.created_at.strftime('%m/%d/%Y %I:%M %p') }}
                             {% if transaction.posted_at %}
-                                {{ transaction.posted_at.strftime('%m/%d/%Y %I:%M %p') }}
                                 <small class="text-muted d-block">Posted</small>
                             {% else %}
-                                {{ transaction.created_at.strftime('%m/%d/%Y %I:%M %p') }}
-                                <small class="text-warning d-block">Created (Pending)</small>
+                                <small class="text-warning d-block">Pending</small>
                             {% endif %}
                         </td>
                         <td>
@@ -295,12 +295,31 @@
                                 <span class="text-muted">-</span>
                             {% endif %}
                         </td>
+                        <td>
+                            {% if transaction.approval_status and transaction.approval_status != 'not_required' %}
+                                {% if transaction.approval_status == 'pending' %}
+                                    <span class="badge bg-warning">Approval Required</span>
+                                {% elif transaction.approval_status == 'approved' %}
+                                    <span class="badge bg-success">Approved</span>
+                                {% elif transaction.approval_status == 'denied' %}
+                                    <span class="badge bg-danger">Denied</span>
+                                {% elif transaction.approval_status == 'violation' %}
+                                    <span class="badge bg-danger">Violation</span>
+                                {% elif transaction.approval_status == 'auto_approved' %}
+                                    <span class="badge bg-info">Auto-Approved</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ transaction.approval_status|title }}</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
                         <td class="text-center">
                             {% set account = accounts | selectattr('id', 'equalto', transaction.account_id) | first %}
                             {% set attachment_count = transaction.number_of_attachments or 0 %}
                             {% set has_attachments = attachment_count > 0 %}
                             {% if account %}
-                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, has_attachments, transaction.posted_at) %}
+                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, has_attachments, transaction.created_at) %}
                                 {% if receipt_status == 'required_present' %}
                                     <i class="fas fa-receipt text-success attachment-icon" 
                                        style="cursor: pointer;" 
@@ -354,11 +373,26 @@
                                     <span class="badge bg-secondary">{{ transaction.status|title }}</span>
                                 {% endif %}
                             {% endif %}
+                            {% if transaction.approval_status and transaction.approval_status != 'not_required' %}
+                                {% if transaction.approval_status == 'pending' %}
+                                    <span class="badge bg-warning ms-1">Approval Required</span>
+                                {% elif transaction.approval_status == 'approved' %}
+                                    <span class="badge bg-success ms-1">Approved</span>
+                                {% elif transaction.approval_status == 'denied' %}
+                                    <span class="badge bg-danger ms-1">Denied</span>
+                                {% elif transaction.approval_status == 'violation' %}
+                                    <span class="badge bg-danger ms-1">Violation</span>
+                                {% elif transaction.approval_status == 'auto_approved' %}
+                                    <span class="badge bg-info ms-1">Auto-Approved</span>
+                                {% else %}
+                                    <span class="badge bg-secondary ms-1">{{ transaction.approval_status|title }}</span>
+                                {% endif %}
+                            {% endif %}
                             {% set account = accounts | selectattr('id', 'equalto', transaction.account_id) | first %}
                             {% set attachment_count = transaction.number_of_attachments or 0 %}
                             {% set has_attachments = attachment_count > 0 %}
                             {% if account %}
-                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, has_attachments, transaction.posted_at) %}
+                                {% set receipt_status = account.get_receipt_status_for_transaction(transaction.amount, has_attachments, transaction.created_at) %}
                                 {% if receipt_status == 'required_present' %}
                                     <i class="fas fa-receipt text-success attachment-icon ms-2" 
                                        style="cursor: pointer;" 
@@ -389,11 +423,7 @@
                         <div class="col-6">
                             <small class="text-muted">Date:</small><br>
                             <small>
-                                {% if transaction.posted_at %}
-                                    {{ transaction.posted_at.strftime('%m/%d/%Y') }}
-                                {% else %}
-                                    {{ transaction.created_at.strftime('%m/%d/%Y') }}
-                                {% endif %}
+                                {{ transaction.created_at.strftime('%m/%d/%Y') }}
                             </small>
                         </div>
                         <div class="col-6">

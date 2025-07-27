@@ -57,6 +57,63 @@
             font-size: 1.5rem;
         }
 
+        /* Sidebar dropdown styles */
+        .sidebar .dropdown-menu {
+            position: absolute;
+            left: 100%;
+            top: 0;
+            margin-left: 10px;
+            min-width: 200px;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            z-index: 1050;
+            background-color: rgba(255, 255, 255, 0.95) !important;
+            backdrop-filter: blur(10px);
+        }
+        .sidebar .dropdown-item {
+            padding: 8px 16px;
+            transition: all 0.3s ease;
+            color: #333 !important;
+        }
+        .sidebar .dropdown-item:hover {
+            background-color: rgba(102, 126, 234, 0.1) !important;
+            color: #667eea !important;
+        }
+        
+        /* Ensure dropdown doesn't overlap sidebar content */
+        .sidebar .nav-item.dropdown {
+            position: relative;
+        }
+        
+        /* Alternative positioning for better visibility */
+        .sidebar .dropdown-menu.show {
+            display: block;
+            transform: translateX(0);
+        }
+        
+        /* Mobile dropdown adjustments */
+        @media (max-width: 768px) {
+            .sidebar .dropdown-menu {
+                position: static;
+                left: auto;
+                top: auto;
+                margin-left: 0;
+                margin-top: 8px;
+                width: calc(100% - 40px);
+                margin-left: 20px;
+                margin-right: 20px;
+                background-color: rgba(255, 255, 255, 0.1) !important;
+                backdrop-filter: none;
+            }
+            .sidebar .dropdown-item {
+                color: rgba(255, 255, 255, 0.9) !important;
+            }
+            .sidebar .dropdown-item:hover {
+                background-color: rgba(255, 255, 255, 0.2) !important;
+                color: white !important;
+            }
+        }
+
         /* Mobile-specific styles */
         @media (max-width: 768px) {
             .sidebar {
@@ -276,6 +333,37 @@
                             </a>
                         </li>
                         {% endif %}
+                        {% if template_user.has_role('admin') or template_user.has_role('super-admin') %}
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="approvalDropdown" role="button" 
+                               data-bs-toggle="dropdown" aria-expanded="false" data-bs-auto-close="true">
+                                <i class="fas fa-shield-alt me-2"></i>
+                                Approvals
+                            </a>
+                            <ul class="dropdown-menu" aria-labelledby="approvalDropdown">
+                                <li><a class="dropdown-item" href="{{ url_for('approval_restrictions') }}">
+                                    <i class="fas fa-cog fa-sm me-2"></i>
+                                    Restrictions
+                                </a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('approval_requests') }}">
+                                    <i class="fas fa-clipboard-list fa-sm me-2"></i>
+                                    Requests
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{{ url_for('create_approval_request') }}">
+                                    <i class="fas fa-plus fa-sm me-2"></i>
+                                    New Request
+                                </a></li>
+                            </ul>
+                        </li>
+                        {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link {{ 'active' if request.endpoint in ['approval_requests', 'create_approval_request'] }}" href="{{ url_for('approval_requests') }}">
+                                <i class="fas fa-clipboard-list me-2"></i>
+                                My Requests
+                            </a>
+                        </li>
+                        {% endif %}
                         {% if template_user.is_admin or template_user.is_super_admin %}
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('add_mercury_account') }}">
@@ -345,6 +433,12 @@
     <!-- Mobile sidebar toggle script -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialize Bootstrap dropdowns explicitly
+            const dropdownElementList = [].slice.call(document.querySelectorAll('.dropdown-toggle'));
+            const dropdownList = dropdownElementList.map(function (dropdownToggleEl) {
+                return new bootstrap.Dropdown(dropdownToggleEl);
+            });
+            
             const sidebarToggle = document.getElementById('sidebarToggle');
             const sidebarClose = document.getElementById('sidebarClose');
             const sidebar = document.getElementById('sidebar');

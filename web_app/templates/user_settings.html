@@ -249,6 +249,75 @@
                 </div>
             </div>
 
+            <!-- Notification Preferences -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-bell me-2"></i>
+                        Notification Preferences
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Email Notifications</h6>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="email_notifications_enabled" name="email_notifications_enabled"
+                                       {% if settings.email_notifications_enabled %}checked{% endif %}>
+                                <label class="form-check-label" for="email_notifications_enabled">
+                                    Enable Email Notifications
+                                </label>
+                                <div class="form-text">
+                                    Receive general email notifications from the system.
+                                </div>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="approval_email_notifications" name="approval_email_notifications"
+                                       {% if settings.approval_email_notifications %}checked{% endif %}>
+                                <label class="form-check-label" for="approval_email_notifications">
+                                    Transaction Approval Emails
+                                </label>
+                                <div class="form-text">
+                                    Receive email notifications for transaction approval requests.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Pushover Notifications</h6>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="pushover_notifications_enabled" name="pushover_notifications_enabled"
+                                       {% if settings.pushover_notifications_enabled %}checked{% endif %}>
+                                <label class="form-check-label" for="pushover_notifications_enabled">
+                                    Enable Pushover Notifications
+                                </label>
+                                <div class="form-text">
+                                    Receive push notifications via Pushover app.
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="pushover_user_key" class="form-label">Pushover User Key</label>
+                                <input type="text" class="form-control" id="pushover_user_key" name="pushover_user_key" 
+                                       value="{{ settings.pushover_user_key or '' }}" placeholder="Your Pushover user key">
+                                <div class="form-text">
+                                    Your personal Pushover user key. Required for push notifications.
+                                    <a href="https://pushover.net/" target="_blank">Get your key at pushover.net</a>
+                                </div>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="approval_pushover_notifications" name="approval_pushover_notifications"
+                                       {% if settings.approval_pushover_notifications %}checked{% endif %}>
+                                <label class="form-check-label" for="approval_pushover_notifications">
+                                    Transaction Approval Push Notifications
+                                </label>
+                                <div class="form-text">
+                                    Receive push notifications for transaction approval requests.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Save Button -->
             <div class="d-grid gap-2 d-md-flex justify-content-md-end">
                 <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">Cancel</a>

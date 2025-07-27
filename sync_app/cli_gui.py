@@ -28,6 +28,7 @@ from models.user_settings import UserSettings
 from models.mercury_account import MercuryAccount
 from models.account import Account
 from models.transaction import Transaction
+from timezone_fix import get_utc_now
 from models.system_setting import SystemSetting
 from utils.encryption import encrypt_api_key, decrypt_api_key
 
@@ -275,7 +276,7 @@ class MercurySyncCLI:
             transaction_count = self.session.query(Transaction).count()
             recent_transactions = (
                 self.session.query(Transaction)
-                .filter(Transaction.posted_at >= datetime.now() - timedelta(days=7))
+                .filter(Transaction.posted_at >= get_utc_now() - timedelta(days=7))
                 .count()
             )
             print(

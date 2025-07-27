@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}Create Approval Request{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Create Approval Request</h1>
+        <a href="{{ url_for('approval_requests') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left fa-sm"></i> Back to Requests
+        </a>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Request Details</h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="form-group">
+                            <label for="restriction_id">Transaction Restriction *</label>
+                            <select class="form-control" id="restriction_id" name="restriction_id" required>
+                                <option value="">Select Restriction</option>
+                                {% for restriction in restrictions %}
+                                <option value="{{ restriction.id }}" 
+                                        data-account="{{ restriction.account_names }}"
+                                        data-type="{{ restriction.restriction_type }}"
+                                        data-threshold="{{ restriction.amount_threshold or '' }}"
+                                        data-category="{{ restriction.category or 'All Categories' }}">
+                                    {{ restriction.account_names }} - {{ restriction.restriction_type.replace('_', ' ').title() }}
+                                    {% if restriction.amount_threshold %}
+                                        (>${{ "{:,.2f}".format(restriction.amount_threshold) }})
+                                    {% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">Choose the restriction you need approval for</small>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="approval_start_date">Approval Start Date *</label>
+                                    <input type="date" class="form-control" id="approval_start_date" name="approval_start_date" required>
+                                    <small class="form-text text-muted">When should the approval take effect?</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="approval_end_date">Approval End Date *</label>
+                                    <input type="date" class="form-control" id="approval_end_date" name="approval_end_date" required>
+                                    <small class="form-text text-muted">When should the approval expire?</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="max_amount">Maximum Amount</label>
+                                    <div class="input-group">
+                                        <div class="input-group-prepend">
+                                            <span class="input-group-text">$</span>
+                                        </div>
+                                        <input type="number" step="0.01" class="form-control" id="max_amount" name="max_amount" placeholder="0.00">
+                                    </div>
+                                    <small class="form-text text-muted">Total dollar amount you need approval for (leave blank for no limit)</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="max_transactions">Maximum Transactions</label>
+                                    <input type="number" class="form-control" id="max_transactions" name="max_transactions" placeholder="e.g., 5">
+                                    <small class="form-text text-muted">Number of transactions you need approval for (leave blank for no limit)</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="category_filter">Category Filter</label>
+                                    <input type="text" class="form-control" id="category_filter" name="category_filter" placeholder="e.g., Office Supplies">
+                                    <small class="form-text text-muted">Limit approval to specific category (optional)</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="subcategory_filter">Subcategory Filter</label>
+                                    <input type="text" class="form-control" id="subcategory_filter" name="subcategory_filter" placeholder="e.g., Software">
+                                    <small class="form-text text-muted">Limit approval to specific subcategory (optional)</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="merchant_filter">Merchant Filter</label>
+                            <select class="form-control" id="merchant_filter" name="merchant_filter">
+                                <option value="">Any Merchant</option>
+                                {% for merchant in merchants %}
+                                <option value="{{ merchant }}">{{ merchant }}</option>
+                                {% endfor %}
+                                <option value="__other__">Other (specify below)</option>
+                            </select>
+                            <small class="form-text text-muted">Limit approval to a specific merchant (optional)</small>
+                        </div>
+
+                        <div class="form-group" id="other_merchant_group" style="display: none;">
+                            <label for="other_merchant">Other Merchant Name</label>
+                            <input type="text" class="form-control" id="other_merchant" name="other_merchant" placeholder="Enter merchant name">
+                            <small class="form-text text-muted">Enter the exact merchant name to match</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="request_reason">Reason for Request</label>
+                            <textarea class="form-control" id="request_reason" name="request_reason" rows="4" 
+                                      placeholder="Please explain why you need this approval..."></textarea>
+                            <small class="form-text text-muted">Provide context to help approvers make their decision</small>
+                        </div>
+
+                        <div class="form-group">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-paper-plane fa-sm text-white-50"></i> Submit Request
+                            </button>
+                            <a href="{{ url_for('approval_requests') }}" class="btn btn-secondary ml-2">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Selected Restriction</h6>
+                </div>
+                <div class="card-body" id="restrictionDetails">
+                    <p class="text-muted">Select a restriction to see details</p>
+                </div>
+            </div>
+
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Help</h6>
+                </div>
+                <div class="card-body">
+                    <h6 class="font-weight-bold">How Approvals Work:</h6>
+                    <ul class="mb-3">
+                        <li>Submit a request for transactions you anticipate needing</li>
+                        <li>Approvers will receive email/push notifications</li>
+                        <li>Once approved, transactions matching your criteria will be automatically approved</li>
+                        <li>Approvals are consumed as transactions are processed</li>
+                    </ul>
+                    
+                    <h6 class="font-weight-bold">Limits:</h6>
+                    <p class="mb-3">
+                        Set either a maximum dollar amount or number of transactions (or both). 
+                        The approval will be consumed when either limit is reached.
+                    </p>
+                    
+                    <h6 class="font-weight-bold">Categories:</h6>
+                    <p class="mb-0">
+                        Use category filters to limit the approval to specific types of expenses. 
+                        Leave blank to approve any category within the restriction.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('restriction_id').addEventListener('change', function() {
+    const select = this;
+    const option = select.options[select.selectedIndex];
+    const detailsDiv = document.getElementById('restrictionDetails');
+    
+    if (!option.value) {
+        detailsDiv.innerHTML = '<p class="text-muted">Select a restriction to see details</p>';
+        return;
+    }
+    
+    const account = option.dataset.account;
+    const type = option.dataset.type;
+    const threshold = option.dataset.threshold;
+    const category = option.dataset.category;
+    
+    let html = `
+        <h6 class="font-weight-bold">Account:</h6>
+        <p class="mb-2">${account}</p>
+        
+        <h6 class="font-weight-bold">Type:</h6>
+        <p class="mb-2">${type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
+    `;
+    
+    if (threshold) {
+        html += `
+            <h6 class="font-weight-bold">Amount Threshold:</h6>
+            <p class="mb-2">$${parseFloat(threshold).toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+        `;
+    }
+    
+    html += `
+        <h6 class="font-weight-bold">Category:</h6>
+        <p class="mb-0">${category}</p>
+    `;
+    
+    detailsDiv.innerHTML = html;
+});
+
+// Set default dates
+const today = new Date();
+const tomorrow = new Date(today);
+tomorrow.setDate(tomorrow.getDate() + 1);
+
+document.getElementById('approval_start_date').value = today.toISOString().split('T')[0];
+document.getElementById('approval_end_date').value = tomorrow.toISOString().split('T')[0];
+
+// Handle merchant dropdown
+document.getElementById('merchant_filter').addEventListener('change', function() {
+    const value = this.value;
+    const otherGroup = document.getElementById('other_merchant_group');
+    
+    if (value === '__other__') {
+        otherGroup.style.display = 'block';
+        document.getElementById('other_merchant').required = true;
+    } else {
+        otherGroup.style.display = 'none';
+        document.getElementById('other_merchant').required = false;
+        document.getElementById('other_merchant').value = '';
+    }
+});
+
+// Handle form submission to process merchant field
+document.querySelector('form').addEventListener('submit', function(e) {
+    const merchantSelect = document.getElementById('merchant_filter');
+    const otherMerchant = document.getElementById('other_merchant');
+    
+    if (merchantSelect.value === '__other__' && otherMerchant.value.trim()) {
+        // Create a hidden input with the custom merchant name
+        const hiddenInput = document.createElement('input');
+        hiddenInput.type = 'hidden';
+        hiddenInput.name = 'merchant_filter';
+        hiddenInput.value = otherMerchant.value.trim();
+        this.appendChild(hiddenInput);
+        
+        // Clear the select value to avoid conflicts
+        merchantSelect.name = '';
+    }
+});
+</script>
+{% endblock %}

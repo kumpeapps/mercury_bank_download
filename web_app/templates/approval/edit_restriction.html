@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Transaction Restriction{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Edit Transaction Restriction</h1>
+        <a href="{{ url_for('approval_restrictions') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left fa-sm"></i> Back to Restrictions
+        </a>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Restriction Details</h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="name">Restriction Name *</label>
+                                    <input type="text" class="form-control" id="name" name="name" required 
+                                           value="{{ restriction.name }}" placeholder="e.g., Large Expense Approval">
+                                    <small class="form-text text-muted">Give this restriction a descriptive name</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="mercury_account_id">Mercury Account *</label>
+                                    <select class="form-control" id="mercury_account_id" name="mercury_account_id" required>
+                                        <option value="">Select Mercury Account</option>
+                                        {% for mercury_data in mercury_accounts %}
+                                        <option value="{{ mercury_data.mercury_account.id }}" 
+                                                {% if mercury_data.mercury_account.id == restriction.mercury_account_id %}selected{% endif %}>
+                                            {{ mercury_data.display_name }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="form-group">
+                                    <label for="account_ids">Accounts *</label>
+                                    <select class="form-control" id="account_ids" name="account_ids" multiple required size="6">
+                                        <!-- Options will be populated by JavaScript -->
+                                    </select>
+                                    <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple accounts</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="restriction_type">Restriction Type *</label>
+                                    <select class="form-control" id="restriction_type" name="restriction_type" required>
+                                        <option value="">Select Type</option>
+                                        <option value="all_transactions" 
+                                                {% if restriction.restriction_type == 'all_transactions' %}selected{% endif %}>
+                                            All Transactions
+                                        </option>
+                                        <option value="amount_threshold" 
+                                                {% if restriction.restriction_type == 'amount_threshold' %}selected{% endif %}>
+                                            Amount Threshold
+                                        </option>
+                                        <option value="category_based" 
+                                                {% if restriction.restriction_type == 'category_based' %}selected{% endif %}>
+                                            Category Based
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group" id="amount_threshold_group" 
+                                     style="display: {% if restriction.restriction_type == 'amount_threshold' %}block{% else %}none{% endif %};">
+                                    <label for="amount_threshold">Amount Threshold</label>
+                                    <div class="input-group">
+                                        <div class="input-group-prepend">
+                                            <span class="input-group-text">$</span>
+                                        </div>
+                                        <input type="number" step="0.01" class="form-control" id="amount_threshold" 
+                                               name="amount_threshold" placeholder="0.00" 
+                                               value="{{ restriction.amount_threshold if restriction.amount_threshold else '' }}">
+                                    </div>
+                                    <small class="form-text text-muted">Transactions above this amount will require approval</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row" id="category_group" 
+                             style="display: {% if restriction.restriction_type in ['category_based', 'amount_threshold'] %}block{% else %}none{% endif %};">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="category">Category</label>
+                                    <input type="text" class="form-control" id="category" name="category" 
+                                           placeholder="e.g., Office Supplies" value="{{ restriction.category or '' }}">
+                                    <small class="form-text text-muted">Leave blank to apply to all categories</small>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="subcategory">Subcategory</label>
+                                    <input type="text" class="form-control" id="subcategory" name="subcategory" 
+                                           placeholder="e.g., Software" value="{{ restriction.subcategory or '' }}">
+                                    <small class="form-text text-muted">Optional - more specific category filter</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="start_date">Start Date *</label>
+                                    <input type="date" class="form-control" id="start_date" name="start_date" required
+                                           value="{{ restriction.start_date.strftime('%Y-%m-%d') }}">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="end_date">End Date</label>
+                                    <input type="date" class="form-control" id="end_date" name="end_date"
+                                           value="{{ restriction.end_date.strftime('%Y-%m-%d') if restriction.end_date else '' }}">
+                                    <small class="form-text text-muted">Leave blank for no expiration</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="approvers">Approvers *</label>
+                            <select class="form-control" id="approvers" name="approvers" multiple required>
+                                {% set selected_approvers = restriction.get_approver_list() %}
+                                {% for user in users %}
+                                <option value="{{ user.id }}" 
+                                        {% if user.id in selected_approvers %}selected{% endif %}>
+                                    {{ user.first_name }} {{ user.last_name }} ({{ user.email }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple approvers</small>
+                        </div>
+
+                        <div class="form-group">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_active" name="is_active" 
+                                       {% if restriction.is_active %}checked{% endif %}>
+                                <label class="form-check-label" for="is_active">
+                                    Active Restriction
+                                </label>
+                                <small class="form-text text-muted">Unchecked restrictions will not apply to transactions</small>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save fa-sm text-white-50"></i> Update Restriction
+                            </button>
+                            <a href="{{ url_for('approval_restrictions') }}" class="btn btn-secondary ml-2">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Help</h6>
+                </div>
+                <div class="card-body">
+                    <h6 class="font-weight-bold">Restriction Types:</h6>
+                    <ul class="mb-3">
+                        <li><strong>All Transactions:</strong> Every transaction requires approval</li>
+                        <li><strong>Amount Threshold:</strong> Only transactions above specified amount</li>
+                        <li><strong>Category Based:</strong> Only transactions in specified categories</li>
+                    </ul>
+                    
+                    <h6 class="font-weight-bold">Date Settings:</h6>
+                    <p class="mb-3">
+                        Start date determines when the restriction becomes active. 
+                        End date is optional - leave blank for permanent restrictions.
+                    </p>
+                    
+                    <h6 class="font-weight-bold">Approvers:</h6>
+                    <p class="mb-0">
+                        Select users who can approve requests for this restriction. 
+                        At least one approver is required.
+                    </p>
+                </div>
+            </div>
+
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-info">Restriction Info</h6>
+                </div>
+                <div class="card-body">
+                    <p><strong>Created:</strong> {{ restriction.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                    <p><strong>Last Updated:</strong> {{ restriction.updated_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                    <p><strong>Created By:</strong> {{ restriction.created_by.first_name }} {{ restriction.created_by.last_name }}</p>
+                    <p><strong>Status:</strong> 
+                        {% if restriction.is_active %}
+                            <span class="badge badge-success">Active</span>
+                        {% else %}
+                            <span class="badge badge-secondary">Inactive</span>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Store account data for each mercury account
+const mercuryAccountData = {
+    {% for mercury_data in mercury_accounts %}
+    {{ mercury_data.mercury_account.id }}: [
+        {% for account in mercury_data.accounts %}
+        { id: "{{ account.id }}", name: "{{ account.name }}" }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ]{% if not loop.last %},{% endif %}
+    {% endfor %}
+};
+
+// Current restriction account IDs
+const currentAccountIds = [
+    {% for account_id in restriction.get_account_list() %}
+    "{{ account_id }}"{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+
+// Populate accounts on page load
+function populateAccounts() {
+    const mercuryAccountId = document.getElementById('mercury_account_id').value;
+    const accountSelect = document.getElementById('account_ids');
+    
+    // Clear existing options
+    accountSelect.innerHTML = '';
+    
+    if (mercuryAccountId && mercuryAccountData[mercuryAccountId]) {
+        // Add accounts for selected mercury account
+        mercuryAccountData[mercuryAccountId].forEach(function(account) {
+            const option = document.createElement('option');
+            option.value = account.id;
+            option.textContent = account.name;
+            
+            // Select if this account was previously selected
+            if (currentAccountIds.includes(account.id)) {
+                option.selected = true;
+            }
+            
+            accountSelect.appendChild(option);
+        });
+    }
+}
+
+// Handle Mercury account selection
+document.getElementById('mercury_account_id').addEventListener('change', function() {
+    const mercuryAccountId = this.value;
+    const accountSelect = document.getElementById('account_ids');
+    
+    // Clear existing options
+    accountSelect.innerHTML = '';
+    
+    if (mercuryAccountId && mercuryAccountData[mercuryAccountId]) {
+        // Add accounts for selected mercury account
+        mercuryAccountData[mercuryAccountId].forEach(function(account) {
+            const option = document.createElement('option');
+            option.value = account.id;
+            option.textContent = account.name;
+            accountSelect.appendChild(option);
+        });
+    }
+});
+
+// Handle restriction type changes
+document.getElementById('restriction_type').addEventListener('change', function() {
+    const restrictionType = this.value;
+    const amountGroup = document.getElementById('amount_threshold_group');
+    const categoryGroup = document.getElementById('category_group');
+    
+    // Hide all optional groups first
+    amountGroup.style.display = 'none';
+    categoryGroup.style.display = 'none';
+    
+    // Show relevant groups based on selection
+    if (restrictionType === 'amount_threshold') {
+        amountGroup.style.display = 'block';
+    } else if (restrictionType === 'category_based') {
+        categoryGroup.style.display = 'block';
+    }
+    
+    // For amount_threshold type, also show category options
+    if (restrictionType === 'amount_threshold') {
+        categoryGroup.style.display = 'block';
+    }
+});
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    populateAccounts();
+});
+</script>
+{% endblock %}

@@ -57,8 +57,8 @@ def get_budget_progress(session: Session, budget: Budget) -> Dict[str, Any]:
             and_(
                 Transaction.account_id.in_(account_ids),
                 Transaction.mercury_category == category.category_name,
-                extract('year', Transaction.posted_at) == budget.budget_month.year,
-                extract('month', Transaction.posted_at) == budget.budget_month.month,
+                extract('year', Transaction.created_at) == budget.budget_month.year,
+                extract('month', Transaction.created_at) == budget.budget_month.month,
                 Transaction.amount < 0,  # Expenses are negative
                 Transaction.status != 'failed'  # Exclude failed transactions
             )
@@ -107,9 +107,9 @@ def get_available_categories(session: Session, account_ids: List[str],
     )
     
     if start_date:
-        query = query.filter(Transaction.posted_at >= start_date)
+        query = query.filter(Transaction.created_at >= start_date)
     if end_date:
-        query = query.filter(Transaction.posted_at <= end_date)
+        query = query.filter(Transaction.created_at <= end_date)
     
     categories = query.distinct().all()
     return sorted([cat[0] for cat in categories if cat[0]])

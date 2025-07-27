@@ -36,6 +36,9 @@ import hashlib
 from collections import defaultdict
 from functools import wraps
 
+# Set up logger
+logger = logging.getLogger(__name__)
+
 # Import models
 from models.user import User
 from models.user_settings import UserSettings
@@ -46,6 +49,14 @@ from models.transaction_attachment import TransactionAttachment
 from models.system_setting import SystemSetting
 from models.budget import Budget, BudgetCategory
 from models.role import Role
+from models.transaction_approval import (
+    TransactionRestriction,
+    TransactionApprovalRequest,
+    TransactionApproval,
+    TransactionApprovalRule,
+    TransactionApprovalLog,
+    NotificationLog
+)
 from models.base import Base
 
 # Import performance configuration
@@ -53,6 +64,24 @@ from performance_config import apply_performance_optimizations
 
 # Import optimized database configuration  
 from database_config import engine, Session, get_db_session, db_config
+
+# Import notification service conditionally to avoid startup failures
+notification_service = None
+try:
+    from notification_service import NotificationService
+    notification_service = NotificationService()
+except ImportError as e:
+    logger.warning("Notification service not available: %s", str(e))
+    notification_service = None
+
+def get_notification_service(db_session):
+    """Get a properly configured notification service with database settings."""
+    try:
+        from notification_service import NotificationService
+        return NotificationService(db_session)
+    except ImportError as e:
+        logger.warning("Notification service not available: %s", str(e))
+        return None
 
 # Sub-category helper functions
 def parse_category(category_string):
@@ -256,6 +285,67 @@ def initialize_system_settings():
                 "logo_url",
                 "",
                 "URL to the application logo image (leave empty for default logo)",
+                True,
+            ),
+            # Email and Notification Settings
+            (
+                "smtp_server",
+                "",
+                "SMTP server hostname for sending email notifications",
+                True,
+            ),
+            (
+                "smtp_port",
+                "587",
+                "SMTP server port (usually 587 for TLS or 465 for SSL)",
+                True,
+            ),
+            (
+                "smtp_username",
+                "",
+                "Username for SMTP authentication",
+                True,
+            ),
+            (
+                "smtp_password",
+                "",
+                "Password for SMTP authentication (stored encrypted)",
+                True,
+            ),
+            (
+                "smtp_use_tls",
+                "true",
+                "Use TLS encryption for SMTP connection",
+                True,
+            ),
+            (
+                "email_from_address",
+                "",
+                "From email address for system notifications",
+                True,
+            ),
+            (
+                "email_from_name",
+                "Mercury Bank Integration",
+                "From name for system notifications",
+                True,
+            ),
+            (
+                "pushover_app_token",
+                "",
+                "Pushover application token for push notifications",
+                True,
+            ),
+            (
+                "approval_email_enabled",
+                "false",
+                "Send email notifications for transaction approval requests",
+                True,
+            ),
+            (
+                "approval_pushover_enabled",
+                "false",
+                "Send Pushover notifications for transaction approval requests",
                 True,
             ),
         ]
@@ -667,13 +757,14 @@ def export_transactions(transactions, format_type, accounts):
     data = []
     for transaction in transactions:
         account = account_lookup.get(transaction.account_id)
-        effective_date = transaction.posted_at or transaction.created_at
+        # Use created_at as the primary date (actual purchase date)
+        effective_date = transaction.created_at
 
         # Get receipt status if account is available
         receipt_status = ""
         if account:
             status = account.get_receipt_status_for_transaction(
-                transaction.amount, transaction.number_of_attachments > 0, transaction.posted_at
+                transaction.amount, transaction.number_of_attachments > 0, transaction.created_at
             )
             receipt_status_map = {
                 "required_present": "Required (Present)",
@@ -702,8 +793,8 @@ def export_transactions(transactions, format_type, accounts):
                 "Counterparty": transaction.counterparty_name or "",
                 "Reference": transaction.reference_number or "",
                 "Posted At": (
-                    transaction.posted_at.strftime("%Y-%m-%d %H:%M:%S")
-                    if transaction.posted_at
+                    transaction.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                    if transaction.created_at
                     else ""
                 ),
                 "Created At": (
@@ -835,9 +926,7 @@ def get_reports_table_data(
             year, month = map(int, month_filter.split("-"))
             from sqlalchemy import and_, extract
 
-            effective_date = func.coalesce(
-                Transaction.posted_at, Transaction.created_at
-            )
+            effective_date = Transaction.created_at
             query = query.filter(
                 and_(
                     extract("year", effective_date) == year,
@@ -1284,18 +1373,13 @@ def dashboard():
         if account_ids_for_transactions:
             from sqlalchemy import case, desc, asc
             
-            effective_date = case(
-                (Transaction.posted_at.isnot(None), Transaction.posted_at),
-                else_=Transaction.created_at,
-            )
             recent_transactions = (
                 db_session.query(Transaction)
                 .options(joinedload(Transaction.account))  # Eagerly load account relationship
                 .filter(Transaction.account_id.in_(account_ids_for_transactions))
                 .order_by(
-                    # Pending transactions first, then by effective date
-                    asc(Transaction.posted_at.isnot(None)),
-                    desc(effective_date),
+                    # Order by created_at (actual purchase date)
+                    desc(Transaction.created_at),
                 )
                 .limit(10)  # Get top 10 directly instead of processing more
                 .all()
@@ -1606,14 +1690,11 @@ def transactions():
                 year, month = map(int, month_filter.split("-"))
                 from sqlalchemy import and_, extract
 
-                # Use effective date (posted_at or created_at) for month filtering
-                effective_date = func.coalesce(
-                    Transaction.posted_at, Transaction.created_at
-                )
+                # Use created_at (actual purchase date) for month filtering
                 query = query.filter(
                     and_(
-                        extract("year", effective_date) == year,
-                        extract("month", effective_date) == month,
+                        extract("year", Transaction.created_at) == year,
+                        extract("month", Transaction.created_at) == month,
                     )
                 )
             except (ValueError, AttributeError):
@@ -1622,20 +1703,13 @@ def transactions():
         # Pagination
         per_page = 50
         offset = (page - 1) * per_page
-        # Order by effective date (posted_at for completed transactions, created_at for pending)
-        # Put pending transactions first (they have NULL posted_at), then completed transactions
-        from sqlalchemy import case, desc, asc
+        # Order by created_at (actual purchase date) instead of posted_at (bank posting date)
+        from sqlalchemy import desc
 
-        effective_date = case(
-            (Transaction.posted_at.isnot(None), Transaction.posted_at),
-            else_=Transaction.created_at,
-        )
         transactions = (
             query.order_by(
-                # First sort: pending transactions first (posted_at is NULL)
-                asc(Transaction.posted_at.isnot(None)),
-                # Second sort: by effective date descending
-                desc(effective_date),
+                # Order by created_at descending (most recent first)
+                desc(Transaction.created_at),
             )
             .offset(offset)
             .limit(per_page)
@@ -1665,10 +1739,8 @@ def transactions():
         if export_format in ["csv", "excel"]:
             # Get all transactions for export (without pagination)
             all_transactions = query.order_by(
-                # First sort: pending transactions first (posted_at is NULL)
-                asc(Transaction.posted_at.isnot(None)),
-                # Second sort: by effective date descending
-                desc(effective_date),
+                # Order by created_at descending (most recent first)
+                desc(Transaction.created_at),
             ).all()
 
             return export_transactions(all_transactions, export_format, all_accounts)
@@ -1935,8 +2007,8 @@ def budget_data():
             end_date = datetime.now()
             start_date = end_date - timedelta(days=months * 30)
 
-        # Build query filters - use created_at for pending transactions, posted_at for completed
-        date_field = func.coalesce(Transaction.posted_at, Transaction.created_at)
+        # Build query filters - use created_at for transaction dates
+        date_field = Transaction.created_at
         filters = [
             Transaction.account_id.in_(account_ids),
             date_field >= start_date,
@@ -1953,8 +2025,8 @@ def budget_data():
             filters.append(Transaction.status.in_(["sent", "pending", "posted"]))
 
         # Query transactions grouped by month and category (note field)
-        # Use created_at for pending transactions (where posted_at is null), posted_at for completed
-        date_for_grouping = func.coalesce(Transaction.posted_at, Transaction.created_at)
+        # Use created_at for transaction dates
+        date_for_grouping = Transaction.created_at
         transactions = (
             db_session.query(
                 extract("year", date_for_grouping).label("year"),
@@ -2105,8 +2177,8 @@ def expense_breakdown():
             end_date = datetime.now()
             start_date = end_date - timedelta(days=months * 30)
 
-        # Build query filters - use created_at for pending transactions, posted_at for completed
-        date_field = func.coalesce(Transaction.posted_at, Transaction.created_at)
+        # Build query filters - use created_at for transaction dates
+        date_field = Transaction.created_at
         filters = [
             Transaction.account_id.in_(account_ids),
             date_field >= start_date,
@@ -2948,11 +3020,11 @@ def health_check():
 
 def get_available_months(db_session, account_ids):
     """Get available months from transactions data"""
-    from sqlalchemy import distinct, extract, func
+    from sqlalchemy import distinct, extract
     from datetime import datetime
 
-    # Use effective date (posted_at or created_at) for month extraction
-    effective_date = func.coalesce(Transaction.posted_at, Transaction.created_at)
+    # Use created_at for month extraction
+    effective_date = Transaction.created_at
 
     # Query distinct year-month combinations
     months_data = (
@@ -3080,6 +3152,13 @@ def user_settings():
                 "transaction_default_status"
             )
 
+            # Update notification preferences
+            settings.email_notifications_enabled = request.form.get("email_notifications_enabled") == "on"
+            settings.pushover_notifications_enabled = request.form.get("pushover_notifications_enabled") == "on"
+            settings.pushover_user_key = request.form.get("pushover_user_key", "").strip() or None
+            settings.approval_email_notifications = request.form.get("approval_email_notifications") == "on"
+            settings.approval_pushover_notifications = request.form.get("approval_pushover_notifications") == "on"
+
             # Update settings
             settings.dashboard_preferences = json.dumps(dashboard_prefs)
             settings.report_preferences = json.dumps(report_prefs)
@@ -3106,8 +3185,9 @@ def user_settings():
         return render_template(
             "user_settings.html",
             settings=settings,
-            accessible_mercury_accounts=mercury_accounts,
+            mercury_accounts=mercury_accounts,
             accessible_accounts=accessible_accounts,
+            template_user=user_in_session,
         )
     finally:
         db_session.close()
@@ -3389,7 +3469,7 @@ def get_hierarchical_reports_data(
         try:
             year, month = map(int, month_filter.split("-"))
             from sqlalchemy import and_, extract
-            effective_date = func.coalesce(Transaction.posted_at, Transaction.created_at)
+            effective_date = Transaction.created_at
             query = query.filter(
                 and_(
                     extract("year", effective_date) == year,
@@ -3460,7 +3540,6 @@ def calculate_budget_progress(db_session, budget):
     """Calculate budget progress including total and per-category spending using transaction notes."""
     from collections import defaultdict
     from datetime import datetime
-    from sqlalchemy import func
     
     # Get the budget month start and end dates
     budget_month = budget.budget_month
@@ -3479,9 +3558,9 @@ def calculate_budget_progress(db_session, budget):
             'categories': {}
         }
     
-    # Query transactions for the budget period using effective date
+    # Query transactions for the budget period using created_at
     # Exclude failed transactions from budget calculations
-    effective_date = func.coalesce(Transaction.posted_at, Transaction.created_at)
+    effective_date = Transaction.created_at
     transactions = db_session.query(Transaction).filter(
         Transaction.account_id.in_(account_ids),
         effective_date >= budget_month,
@@ -3556,7 +3635,7 @@ def get_budget_report_data(db_session, budget):
             budgeted_amounts[budget_category.category_name] = budget_category.budgeted_amount
     
     # Query ALL transactions for the budget period (expenses and income)
-    effective_date = func.coalesce(Transaction.posted_at, Transaction.created_at)
+    effective_date = Transaction.created_at
     all_transactions = db_session.query(Transaction).filter(
         Transaction.account_id.in_(account_ids),
         effective_date >= budget_month,
@@ -3649,7 +3728,7 @@ def get_budget_report_data(db_session, budget):
                 'id': transaction.id,
                 'description': transaction.description,
                 'amount': abs(transaction.amount),  # Show absolute value in transaction details
-                'date': transaction.posted_at or transaction.created_at,
+                'date': transaction.created_at,
                 'account_name': (transaction.account.nickname if transaction.account and transaction.account.nickname 
                               else transaction.account.name if transaction.account else 'Unknown')
             })
@@ -3721,7 +3800,7 @@ def get_budget_report_data(db_session, budget):
                         'id': transaction.id,
                         'description': transaction.description,
                         'amount': amount,
-                        'date': transaction.posted_at or transaction.created_at,
+                        'date': transaction.created_at,
                         'account_name': (transaction.account.nickname if transaction.account and transaction.account.nickname 
                                       else transaction.account.name if transaction.account else 'Unknown')
                     })
@@ -3739,7 +3818,7 @@ def get_budget_report_data(db_session, budget):
                     'id': transaction.id,
                     'description': transaction.description,
                     'amount': amount,
-                    'date': transaction.posted_at or transaction.created_at,
+                    'date': transaction.created_at,
                     'account_name': (transaction.account.nickname if transaction.account and transaction.account.nickname 
                                   else transaction.account.name if transaction.account else 'Unknown')
                 })
@@ -4462,6 +4541,1023 @@ def get_budget_accounts(mercury_account_id):
         return jsonify({"error": "Internal server error"}), 500
     finally:
         db_session.close()
+
+
+# ============================================================================
+# TRANSACTION APPROVAL ROUTES
+# ============================================================================
+
+@app.route('/approval/restrictions')
+@login_required
+@admin_required
+def approval_restrictions():
+    """List all transaction restrictions."""
+    db_session = Session()
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = 20
+        
+        # Get restrictions user has access to
+        if current_user.has_role('super-admin'):
+            query = db_session.query(TransactionRestriction).filter(
+                TransactionRestriction.is_active == True
+            )
+        else:
+            # Filter by mercury accounts user has access to
+            user = db_session.query(User).get(current_user.id)
+            mercury_account_ids = [ma.id for ma in user.mercury_accounts] if user.mercury_accounts else []
+            query = db_session.query(TransactionRestriction).filter(
+                TransactionRestriction.mercury_account_id.in_(mercury_account_ids),
+                TransactionRestriction.is_active == True
+            )
+        
+        # Manual pagination
+        total = query.count()
+        restrictions_list = query.offset((page - 1) * per_page).limit(per_page).all()
+        
+        # Add account names to each restriction
+        for restriction in restrictions_list:
+            restriction.account_names = restriction.get_account_names(db_session)
+        
+        # Create pagination info
+        has_prev = page > 1
+        has_next = (page * per_page) < total
+        prev_num = page - 1 if has_prev else None
+        next_num = page + 1 if has_next else None
+        pages = (total + per_page - 1) // per_page
+        
+        restrictions_data = {
+            'data': restrictions_list,
+            'has_prev': has_prev,
+            'has_next': has_next,
+            'prev_num': prev_num,
+            'next_num': next_num,
+            'page': page,
+            'pages': pages,
+            'total': total
+        }
+        
+        return render_template('approval/restrictions.html', restriction_data=restrictions_data)
+    except Exception as e:
+        flash(f'Error loading restrictions: {str(e)}', 'error')
+        return render_template('approval/restrictions.html', restriction_data={'data': [], 'total': 0, 'page': 1, 'pages': 0, 'has_prev': False, 'has_next': False})
+    finally:
+        db_session.close()
+
+
+@app.route('/approval/restrictions/new', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def create_approval_restriction():
+    """Create a new transaction restriction."""
+    db_session = Session()
+    try:
+        if request.method == 'POST':
+            # Parse form data
+            name = request.form.get('name')
+            mercury_account_id = request.form.get('mercury_account_id')
+            account_ids = request.form.getlist('account_ids')
+            restriction_type = request.form.get('restriction_type')
+            amount_threshold = request.form.get('amount_threshold')
+            category = request.form.get('category')
+            subcategory = request.form.get('subcategory')
+            start_date = request.form.get('start_date')
+            end_date = request.form.get('end_date')
+            approvers = request.form.getlist('approvers')
+            
+            # Validate required fields
+            if not name or not mercury_account_id or not account_ids or not restriction_type or not start_date:
+                flash('Name, mercury account, at least one account, restriction type, and start date are required.', 'error')
+                return render_template('approval/create_restriction.html', 
+                                     mercury_accounts=get_user_accounts_for_approval(db_session),
+                                     users=get_approver_users(db_session))
+            
+            # Validate mercury account access
+            if current_user.has_role('super-admin'):
+                mercury_account = db_session.query(MercuryAccount).filter(MercuryAccount.id == mercury_account_id).first()
+            else:
+                user = db_session.query(User).get(current_user.id)
+                mercury_account = db_session.query(MercuryAccount).filter(
+                    MercuryAccount.id == mercury_account_id,
+                    MercuryAccount.users.contains(user)
+                ).first()
+            
+            if not mercury_account:
+                flash('Invalid mercury account selected.', 'error')
+                return render_template('approval/create_restriction.html', 
+                                     mercury_accounts=get_user_accounts_for_approval(db_session),
+                                     users=get_approver_users(db_session))
+            
+            # Validate account access
+            valid_accounts = db_session.query(Account).filter(
+                Account.id.in_(account_ids),
+                Account.mercury_account_id == mercury_account_id,
+                Account.is_active == True
+            ).all()
+            
+            if len(valid_accounts) != len(account_ids):
+                flash('One or more selected accounts are invalid.', 'error')
+                return render_template('approval/create_restriction.html', 
+                                     mercury_accounts=get_user_accounts_for_approval(db_session),
+                                     users=get_approver_users(db_session))
+            
+            # Parse dates
+            start_date = datetime.strptime(start_date, '%Y-%m-%d')
+            end_date = datetime.strptime(end_date, '%Y-%m-%d') if end_date else None
+            
+            # Parse amount threshold
+            amount_threshold = float(amount_threshold) if amount_threshold else None
+            
+            # Create restriction
+            restriction = TransactionRestriction(
+                name=name,
+                account_ids=','.join(account_ids),
+                mercury_account_id=mercury_account_id,
+                restriction_type=restriction_type,
+                amount_threshold=amount_threshold,
+                category=category if category else None,
+                subcategory=subcategory if subcategory else None,
+                start_date=start_date,
+                end_date=end_date,
+                approvers=','.join(approvers) if approvers else '',
+                created_by_user_id=current_user.id
+            )
+            
+            db_session.add(restriction)
+            db_session.commit()
+            
+            flash('Transaction restriction created successfully.', 'success')
+            return redirect(url_for('approval_restrictions'))
+        
+        return render_template('approval/create_restriction.html', 
+                             mercury_accounts=get_user_accounts_for_approval(db_session),
+                             users=get_approver_users(db_session))
+    except Exception as e:
+        flash(f'Error creating restriction: {str(e)}', 'error')
+        db_session.rollback()
+        return render_template('approval/create_restriction.html', 
+                             mercury_accounts=get_user_accounts_for_approval(db_session),
+                             users=get_approver_users(db_session))
+    finally:
+        db_session.close()
+
+
+@app.route('/approval/restrictions/<int:restriction_id>/edit', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def edit_approval_restriction(restriction_id):
+    """Edit an existing transaction restriction."""
+    db_session = Session()
+    try:
+        # Get the restriction
+        restriction = db_session.query(TransactionRestriction).filter(
+            TransactionRestriction.id == restriction_id
+        ).first()
+        
+        if not restriction:
+            flash('Restriction not found.', 'error')
+            return redirect(url_for('approval_restrictions'))
+        
+        if request.method == 'POST':
+            # Parse form data
+            name = request.form.get('name')
+            mercury_account_id = request.form.get('mercury_account_id')
+            account_ids = request.form.getlist('account_ids')
+            restriction_type = request.form.get('restriction_type')
+            amount_threshold = request.form.get('amount_threshold')
+            category = request.form.get('category')
+            subcategory = request.form.get('subcategory')
+            start_date = request.form.get('start_date')
+            end_date = request.form.get('end_date')
+            approvers = request.form.getlist('approvers')
+            is_active = request.form.get('is_active') == 'on'
+            
+            # Validate required fields
+            if not name or not mercury_account_id or not account_ids or not restriction_type or not start_date:
+                flash('Name, mercury account, at least one account, restriction type, and start date are required.', 'error')
+                return render_template('approval/edit_restriction.html', 
+                                     restriction=restriction,
+                                     mercury_accounts=get_user_accounts_for_approval(db_session),
+                                     users=get_approver_users(db_session))
+            
+            # Validate mercury account access
+            if current_user.has_role('super-admin'):
+                mercury_account = db_session.query(MercuryAccount).filter(MercuryAccount.id == mercury_account_id).first()
+            else:
+                user = db_session.query(User).get(current_user.id)
+                mercury_account = db_session.query(MercuryAccount).filter(
+                    MercuryAccount.id == mercury_account_id,
+                    MercuryAccount.users.contains(user)
+                ).first()
+            
+            if not mercury_account:
+                flash('Invalid mercury account selected.', 'error')
+                return render_template('approval/edit_restriction.html', 
+                                     restriction=restriction,
+                                     mercury_accounts=get_user_accounts_for_approval(db_session),
+                                     users=get_approver_users(db_session))
+            
+            # Validate account access
+            valid_accounts = db_session.query(Account).filter(
+                Account.id.in_(account_ids),
+                Account.mercury_account_id == mercury_account_id,
+                Account.is_active == True
+            ).all()
+            
+            if len(valid_accounts) != len(account_ids):
+                flash('One or more selected accounts are invalid.', 'error')
+                return render_template('approval/edit_restriction.html', 
+                                     restriction=restriction,
+                                     mercury_accounts=get_user_accounts_for_approval(db_session),
+                                     users=get_approver_users(db_session))
+            
+            # Parse dates
+            start_date = datetime.strptime(start_date, '%Y-%m-%d')
+            end_date = datetime.strptime(end_date, '%Y-%m-%d') if end_date else None
+            
+            # Parse amount threshold
+            amount_threshold = float(amount_threshold) if amount_threshold else None
+            
+            # Update restriction
+            restriction.name = name
+            restriction.account_ids = ','.join(account_ids)
+            restriction.mercury_account_id = mercury_account_id
+            restriction.restriction_type = restriction_type
+            restriction.amount_threshold = amount_threshold
+            restriction.category = category if category else None
+            restriction.subcategory = subcategory if subcategory else None
+            restriction.start_date = start_date
+            restriction.end_date = end_date
+            restriction.approvers = ','.join(approvers) if approvers else ''
+            restriction.is_active = is_active
+            
+            db_session.commit()
+            
+            flash('Transaction restriction updated successfully.', 'success')
+            return redirect(url_for('approval_restrictions'))
+        
+        return render_template('approval/edit_restriction.html', 
+                             restriction=restriction,
+                             mercury_accounts=get_user_accounts_for_approval(db_session),
+                             users=get_approver_users(db_session))
+    except Exception as e:
+        flash(f'Error updating restriction: {str(e)}', 'error')
+        db_session.rollback()
+        return render_template('approval/edit_restriction.html', 
+                             restriction=restriction,
+                             mercury_accounts=get_user_accounts_for_approval(db_session),
+                             users=get_approver_users(db_session))
+    finally:
+        db_session.close()
+
+
+@app.route('/approval/restrictions/<int:restriction_id>/delete', methods=['POST'])
+@login_required
+@admin_required
+def delete_approval_restriction(restriction_id):
+    """Delete a transaction restriction (soft delete)."""
+    db_session = Session()
+    try:
+        # Get the restriction
+        restriction = db_session.query(TransactionRestriction).filter(
+            TransactionRestriction.id == restriction_id
+        ).first()
+        
+        if not restriction:
+            flash('Restriction not found.', 'error')
+            return redirect(url_for('approval_restrictions'))
+        
+        # Check if user has access to this restriction
+        if not current_user.has_role('super-admin'):
+            user = db_session.query(User).get(current_user.id)
+            mercury_account_ids = [ma.id for ma in user.mercury_accounts] if user.mercury_accounts else []
+            if restriction.mercury_account_id not in mercury_account_ids:
+                flash('Access denied to this restriction.', 'error')
+                return redirect(url_for('approval_restrictions'))
+        
+        # Soft delete the restriction
+        restriction.is_active = False
+        db_session.commit()
+        
+        flash('Transaction restriction deleted successfully.', 'success')
+        return redirect(url_for('approval_restrictions'))
+        
+    except Exception as e:
+        flash(f'Error deleting restriction: {str(e)}', 'error')
+        db_session.rollback()
+        return redirect(url_for('approval_restrictions'))
+    finally:
+        db_session.close()
+
+
+@app.route('/approval/requests')
+@login_required
+def approval_requests():
+    """List approval requests (pending, approved, denied)."""
+    db_session = Session()
+    try:
+        page = request.args.get('page', 1, type=int)
+        status_filter = request.args.get('status', 'all')
+        
+        # Base query with eager loading
+        query = db_session.query(TransactionApprovalRequest).options(
+            joinedload(TransactionApprovalRequest.restriction).joinedload(TransactionRestriction.mercury_account),
+            joinedload(TransactionApprovalRequest.requested_by),
+            joinedload(TransactionApprovalRequest.approved_by)
+        )
+        
+        # Filter by status if specified
+        if status_filter != 'all':
+            query = query.filter(TransactionApprovalRequest.status == status_filter)
+        
+        # Filter by user permissions
+        if not current_user.has_role('super-admin'):
+            # Show requests for accounts user has access to or requests they made
+            user = db_session.query(User).get(current_user.id)
+            mercury_account_ids = [ma.id for ma in user.mercury_accounts] if user.mercury_accounts else []
+            query = query.join(TransactionRestriction).filter(
+                (TransactionRestriction.mercury_account_id.in_(mercury_account_ids)) |
+                (TransactionApprovalRequest.requested_by_user_id == current_user.id)
+            )
+        
+        # Execute query
+        requests = query.order_by(TransactionApprovalRequest.created_at.desc()).all()
+        
+        return render_template('approval/requests.html', requests=requests, status_filter=status_filter)
+    finally:
+        db_session.close()
+
+
+@app.route('/approval/requests/new', methods=['GET', 'POST'])
+@login_required
+def create_approval_request():
+    """Create a new approval request."""
+    db_session = Session()
+    try:
+        if request.method == 'POST':
+            restriction_id = request.form.get('restriction_id')
+            max_transactions = request.form.get('max_transactions')
+            max_amount = request.form.get('max_amount')
+            approval_start_date = request.form.get('approval_start_date')
+            approval_end_date = request.form.get('approval_end_date')
+            category_filter = request.form.get('category_filter')
+            subcategory_filter = request.form.get('subcategory_filter')
+            merchant_filter = request.form.get('merchant_filter')
+            request_reason = request.form.get('request_reason')
+            
+            # Validate required fields
+            if not restriction_id or not approval_start_date or not approval_end_date:
+                flash('Restriction, start date, and end date are required.', 'error')
+                return render_template('approval/create_request.html', 
+                                     restrictions=get_user_restrictions_with_names(db_session),
+                                     merchants=get_merchants_from_transactions(db_session))
+            
+            # Parse dates
+            approval_start_date = datetime.strptime(approval_start_date, '%Y-%m-%d')
+            approval_end_date = datetime.strptime(approval_end_date, '%Y-%m-%d')
+            
+            # Parse numeric fields
+            max_transactions = int(max_transactions) if max_transactions else None
+            max_amount = float(max_amount) if max_amount else None
+            
+            # Create approval request
+            approval_request = TransactionApprovalRequest(
+                restriction_id=int(restriction_id),
+                requested_by_user_id=current_user.id,
+                max_transactions=max_transactions,
+                max_amount=max_amount,
+                approval_start_date=approval_start_date,
+                approval_end_date=approval_end_date,
+                category_filter=category_filter if category_filter else None,
+                subcategory_filter=subcategory_filter if subcategory_filter else None,
+                merchant_filter=merchant_filter if merchant_filter else None,
+                request_reason=request_reason
+            )
+            
+            db_session.add(approval_request)
+            db_session.commit()
+            
+            # Send notifications to approvers
+            try:
+                # Check notification preferences using proper SystemSetting methods
+                email_enabled = SystemSetting.get_bool_value(db_session, 'approval_email_enabled', False)
+                pushover_enabled = SystemSetting.get_bool_value(db_session, 'approval_pushover_enabled', False)
+                
+                if email_enabled or pushover_enabled:
+                    # Get properly configured notification service
+                    ns = get_notification_service(db_session)
+                    if ns:
+                        # Get the restriction and account info
+                        restriction = db_session.query(TransactionRestriction).get(int(restriction_id))
+                        if restriction:
+                            # Get approvers for this restriction
+                            approvers = []
+                            for approver_id in restriction.get_approver_list():
+                                approver = db_session.query(User).get(approver_id)
+                                if approver:
+                                    approvers.append({
+                                        'email': approver.email,
+                                        'first_name': approver.first_name,
+                                        'last_name': approver.last_name,
+                                        'pushover_user_key': approver.settings.pushover_user_key if approver.settings else None
+                                    })                        # Also include super-admins
+                        super_admin_role = db_session.query(Role).filter_by(name='super-admin').first()
+                        if super_admin_role:
+                            for user in super_admin_role.users:
+                                if user.id not in restriction.get_approver_list():
+                                    approvers.append({
+                                        'email': user.email,
+                                        'first_name': user.first_name,
+                                        'last_name': user.last_name,
+                                        'pushover_user_key': user.settings.pushover_user_key if user.settings else None
+                                    })
+                        
+                        if approvers:
+                            # Get account names for this restriction
+                            account_names = restriction.get_account_names(db_session)
+                            account_name = ', '.join(account_names) if account_names else restriction.mercury_account.name
+                            mercury_account_name = restriction.mercury_account.name
+                            
+                            # Prepare request data for notification
+                            request_data = {
+                                'id': approval_request.id,
+                                'account_name': account_name,
+                                'mercury_account_name': mercury_account_name,
+                                'requested_by': f"{current_user.first_name} {current_user.last_name}",
+                                'restriction_type': restriction.restriction_type,
+                                'max_amount': max_amount,
+                                'max_transactions': max_transactions,
+                                'approval_start_date': approval_start_date.strftime('%Y-%m-%d'),
+                                'approval_end_date': approval_end_date.strftime('%Y-%m-%d'),
+                                'category_filter': category_filter,
+                                'subcategory_filter': subcategory_filter,
+                                'merchant_filter': merchant_filter,
+                                'request_reason': request_reason,
+                                'created_at': approval_request.created_at.strftime('%Y-%m-%d %H:%M')
+                            }
+                            
+                            # Send notifications
+                            # Create approval URLs (these would typically be sent in email)
+                            approve_url = f"{request.host_url}approval/requests/{approval_request.id}/approve"
+                            deny_url = f"{request.host_url}approval/requests/{approval_request.id}/deny"
+                            
+                            ns.send_approval_request_notification(
+                                approvers=approvers,
+                                request_data=request_data,
+                                approve_url=approve_url,
+                                deny_url=deny_url
+                            )
+            except Exception as e:
+                # Don't fail the request creation if notification fails
+                logger.warning("Failed to send approval request notification: %s", str(e))
+            
+            flash('Approval request submitted successfully.', 'success')
+            return redirect(url_for('approval_requests'))
+        
+        return render_template('approval/create_request.html', 
+                             restrictions=get_user_restrictions_with_names(db_session),
+                             merchants=get_merchants_from_transactions(db_session))
+    except Exception as e:
+        flash(f'Error creating approval request: {str(e)}', 'error')
+        db_session.rollback()
+        return render_template('approval/create_request.html', 
+                             restrictions=get_user_restrictions_with_names(db_session),
+                             merchants=get_merchants_from_transactions(db_session))
+    finally:
+        db_session.close()
+
+
+@app.route('/approval/requests/<int:request_id>/approve', methods=['GET', 'POST'])
+@login_required
+def approve_approval_request(request_id):
+    """Approve an approval request."""
+    db_session = Session()
+    try:
+        approval_request = db_session.query(TransactionApprovalRequest).options(
+            joinedload(TransactionApprovalRequest.restriction).joinedload(TransactionRestriction.mercury_account),
+            joinedload(TransactionApprovalRequest.requested_by)
+        ).get(request_id)
+        
+        if not approval_request:
+            flash('Approval request not found.', 'error')
+            return redirect(url_for('approval_requests'))
+        
+        # Check if user is authorized to approve this request
+        if not can_approve_request(approval_request, current_user, db_session):
+            flash('You are not authorized to approve this request.', 'error')
+            return redirect(url_for('approval_requests'))
+        
+        if approval_request.status != 'pending':
+            flash('This request has already been processed.', 'error')
+            return redirect(url_for('approval_requests'))
+        
+        if request.method == 'GET':
+            # Show approval form
+            return render_template('approval/approve_form.html', 
+                                 approval_request=approval_request,
+                                 action='approve')
+        
+        approval_notes = request.form.get('approval_notes', '')
+        
+        # Update request
+        approval_request.status = 'approved'
+        approval_request.approved_by_user_id = current_user.id
+        approval_request.approval_decision_date = datetime.utcnow()
+        approval_request.approval_notes = approval_notes
+        
+        # Create approvals for each account in the restriction
+        account_ids = approval_request.restriction.get_account_list()
+        
+        for account_id in account_ids:
+            approval = TransactionApproval(
+                request_id=approval_request.id,
+                account_id=str(account_id),  # Convert to string as expected by model
+                max_transactions=approval_request.max_transactions,
+                max_amount=approval_request.max_amount,
+                approval_start_date=approval_request.approval_start_date,
+                approval_end_date=approval_request.approval_end_date,
+                category_filter=approval_request.category_filter,
+                subcategory_filter=approval_request.subcategory_filter,
+                merchant_filter=approval_request.merchant_filter
+            )
+            db_session.add(approval)
+        
+        db_session.commit()
+        
+        # Send notification to the requesting user
+        try:
+            # Check notification preferences using proper SystemSetting methods
+            email_enabled = SystemSetting.get_bool_value(db_session, 'approval_email_enabled', False)
+            pushover_enabled = SystemSetting.get_bool_value(db_session, 'approval_pushover_enabled', False)
+            
+            if email_enabled or pushover_enabled:
+                # Get properly configured notification service
+                ns = get_notification_service(db_session)
+                if ns:
+                    requesting_user = approval_request.requested_by
+                    user_data = {
+                        'email': requesting_user.email,
+                        'first_name': requesting_user.first_name,
+                        'last_name': requesting_user.last_name,
+                        'pushover_user_key': requesting_user.settings.pushover_user_key if requesting_user.settings else None
+                    }
+                
+                # Get account names for this restriction
+                account_names = approval_request.restriction.get_account_names(db_session)
+                account_name = ', '.join(account_names) if account_names else approval_request.restriction.mercury_account.name
+                
+                request_data = {
+                    'id': approval_request.id,
+                    'account_name': account_name,
+                    'max_amount': approval_request.max_amount,
+                    'max_transactions': approval_request.max_transactions,
+                    'approval_start_date': approval_request.approval_start_date.strftime('%Y-%m-%d'),
+                    'approval_end_date': approval_request.approval_end_date.strftime('%Y-%m-%d'),
+                    'category_filter': approval_request.category_filter,
+                    'subcategory_filter': approval_request.subcategory_filter,
+                    'request_reason': approval_request.request_reason,
+                    'restriction_type': approval_request.restriction.restriction_type,
+                    'approval_notes': approval_notes,
+                    'approved_by': f"{current_user.first_name} {current_user.last_name}",
+                    'approval_decision_date': approval_request.approval_decision_date.strftime('%Y-%m-%d %H:%M')
+                }
+                
+                ns.send_approval_decision_notification(
+                    user_data=user_data,
+                    request_data=request_data,
+                    decision='approved',
+                    notes=approval_notes
+                )
+        except Exception as e:
+            app.logger.warning("Failed to send approval decision notification: %s", str(e))
+        
+        flash('Approval request approved successfully.', 'success')
+        
+    except Exception as e:
+        flash(f'Error approving request: {str(e)}', 'error')
+        db_session.rollback()
+    finally:
+        db_session.close()
+    
+    return redirect(url_for('approval_requests'))
+
+
+@app.route('/approval/requests/<int:request_id>/deny', methods=['GET', 'POST'])
+@login_required
+def deny_approval_request(request_id):
+    """Deny an approval request."""
+    db_session = Session()
+    try:
+        approval_request = db_session.query(TransactionApprovalRequest).options(
+            joinedload(TransactionApprovalRequest.restriction).joinedload(TransactionRestriction.mercury_account),
+            joinedload(TransactionApprovalRequest.requested_by)
+        ).get(request_id)
+        
+        if not approval_request:
+            flash('Approval request not found.', 'error')
+            return redirect(url_for('approval_requests'))
+        
+        # Check if user is authorized to approve this request
+        if not can_approve_request(approval_request, current_user, db_session):
+            flash('You are not authorized to deny this request.', 'error')
+            return redirect(url_for('approval_requests'))
+        
+        if approval_request.status != 'pending':
+            flash('This request has already been processed.', 'error')
+            return redirect(url_for('approval_requests'))
+        
+        if request.method == 'GET':
+            # Show denial form
+            return render_template('approval/approve_form.html', 
+                                 approval_request=approval_request,
+                                 action='deny')
+        
+        approval_notes = request.form.get('approval_notes', '')
+        
+        # Update request
+        approval_request.status = 'denied'
+        approval_request.approved_by_user_id = current_user.id
+        approval_request.approval_decision_date = datetime.utcnow()
+        approval_request.approval_notes = approval_notes
+        
+        db_session.commit()
+        
+        # Send notification to the requesting user
+        try:
+            # Check notification preferences using proper SystemSetting methods
+            email_enabled = SystemSetting.get_bool_value(db_session, 'approval_email_enabled', False)
+            pushover_enabled = SystemSetting.get_bool_value(db_session, 'approval_pushover_enabled', False)
+            
+            if email_enabled or pushover_enabled:
+                # Get properly configured notification service
+                ns = get_notification_service(db_session)
+                if ns:
+                    requesting_user = approval_request.requested_by
+                    user_data = {
+                        'email': requesting_user.email,
+                        'first_name': requesting_user.first_name,
+                        'last_name': requesting_user.last_name,
+                        'pushover_user_key': requesting_user.settings.pushover_user_key if requesting_user.settings else None
+                    }
+                
+                # Get account names for this restriction
+                account_names = approval_request.restriction.get_account_names(db_session)
+                account_name = ', '.join(account_names) if account_names else approval_request.restriction.mercury_account.name
+                
+                request_data = {
+                    'id': approval_request.id,
+                    'account_name': account_name,
+                    'max_amount': approval_request.max_amount,
+                    'max_transactions': approval_request.max_transactions,
+                    'approval_start_date': approval_request.approval_start_date.strftime('%Y-%m-%d'),
+                    'approval_end_date': approval_request.approval_end_date.strftime('%Y-%m-%d'),
+                    'category_filter': approval_request.category_filter,
+                    'subcategory_filter': approval_request.subcategory_filter,
+                    'request_reason': approval_request.request_reason,
+                    'restriction_type': approval_request.restriction.restriction_type,
+                    'approval_notes': approval_notes,
+                    'approved_by': f"{current_user.first_name} {current_user.last_name}",
+                    'approval_decision_date': approval_request.approval_decision_date.strftime('%Y-%m-%d %H:%M')
+                }
+                
+                ns.send_approval_decision_notification(
+                    user_data=user_data,
+                    request_data=request_data,
+                    decision='denied',
+                    notes=approval_notes
+                )
+        except Exception as e:
+            app.logger.warning("Failed to send approval decision notification: %s", str(e))
+        
+        flash('Approval request denied.', 'success')
+        
+    except Exception as e:
+        flash(f'Error denying request: {str(e)}', 'error')
+        db_session.rollback()
+    finally:
+        db_session.close()
+    
+    return redirect(url_for('approval_requests'))
+
+
+@app.route('/approval/requests/<int:request_id>/details')
+@login_required
+def get_approval_request_details(request_id):
+    """Get detailed information about an approval request (AJAX endpoint)."""
+    db_session = Session()
+    try:
+        approval_request = db_session.query(TransactionApprovalRequest).get(request_id)
+        
+        if not approval_request:
+            return jsonify({'error': 'Approval request not found'}), 404
+        
+        # Get account names for this restriction
+        account_names = approval_request.restriction.get_account_names(db_session)
+        account_name = ', '.join(account_names) if account_names else approval_request.restriction.mercury_account.name
+        
+        # Build the response data
+        request_data = {
+            'id': approval_request.id,
+            'account_name': account_name,
+            'requested_by_name': f"{approval_request.requested_by.first_name} {approval_request.requested_by.last_name}",
+            'created_at': approval_request.created_at.strftime('%Y-%m-%d %H:%M'),
+            'status': approval_request.status,
+            'max_amount': float(approval_request.max_amount) if approval_request.max_amount else None,
+            'max_transactions': approval_request.max_transactions,
+            'approval_start_date': approval_request.approval_start_date.strftime('%Y-%m-%d'),
+            'approval_end_date': approval_request.approval_end_date.strftime('%Y-%m-%d'),
+            'category_filter': approval_request.category_filter,
+            'subcategory_filter': approval_request.subcategory_filter,
+            'request_reason': approval_request.request_reason,
+            'approval_notes': approval_request.approval_notes,
+            'approved_by_name': None,
+            'approval_decision_date': None
+        }
+        
+        # Add approval details if approved/denied
+        if approval_request.approved_by_user_id:
+            approved_by = db_session.query(User).get(approval_request.approved_by_user_id)
+            if approved_by:
+                request_data['approved_by_name'] = f"{approved_by.first_name} {approved_by.last_name}"
+            if approval_request.approval_decision_date:
+                request_data['approval_decision_date'] = approval_request.approval_decision_date.strftime('%Y-%m-%d %H:%M')
+        
+        return jsonify({'request': request_data})
+        
+    except Exception as e:
+        return jsonify({'error': f'Error loading request details: {str(e)}'}), 500
+    finally:
+        db_session.close()
+
+
+@app.route('/approval/re-evaluate-approvals', methods=['POST'])
+@login_required
+@admin_required
+def re_evaluate_approvals():
+    """Manually trigger re-evaluation of all active and recently expired approvals.
+    
+    Includes approvals that expired within the last 5 days to handle cases where
+    transaction categories are modified after an approval expires.
+    """
+    try:
+        db = Session()
+        try:
+            # Import models we need
+            from models.transaction_approval import TransactionApproval, TransactionApprovalLog
+            from models.transaction import Transaction
+            from datetime import datetime, timedelta
+            from sqlalchemy import or_, and_
+            
+            # Get all active approvals AND recently expired approvals (within 5 days)
+            # This handles cases where approvals expire but transaction categories are changed afterward
+            five_days_ago = datetime.now() - timedelta(days=5)
+            
+            approvals = db.query(TransactionApproval).filter(
+                or_(
+                    TransactionApproval.is_active == True,
+                    and_(
+                        TransactionApproval.is_active == False,
+                        TransactionApproval.approval_end_date >= five_days_ago
+                    )
+                )
+            ).all()
+            
+            results = {
+                'checked_approvals': 0,
+                'deactivated_approvals': 0,
+                'removed_logs': 0,
+                'reverted_transactions': 0,
+                'usage_corrected': 0
+            }
+            
+            for approval in approvals:
+                results['checked_approvals'] += 1
+                
+                # Track valid transactions and amounts
+                logs_to_remove = []
+                valid_transaction_count = 0
+                valid_amount_total = 0.0
+                
+                # Check all transaction logs for this approval
+                for log in approval.transaction_logs:
+                    # Get the actual transaction
+                    transaction = db.query(Transaction).filter(
+                        Transaction.id == log.transaction_id
+                    ).first()
+                    
+                    if transaction:
+                        # Check if this approval would still be valid for this transaction
+                        # with current category/merchant data
+                        is_still_valid = approval.can_approve_transaction(
+                            amount=log.amount,
+                            category=transaction.category,
+                            subcategory=None,  # Transactions don't currently have subcategory
+                            merchant=transaction.counterparty_name,
+                            transaction_date=transaction.posted_at
+                        )
+                        
+                        if not is_still_valid:
+                            logs_to_remove.append(log)
+                            # Clear the approval from the transaction
+                            transaction.approval_status = 'violation'
+                            transaction.approval_id = None
+                            results['reverted_transactions'] += 1
+                        else:
+                            # This transaction is still valid, count it
+                            valid_transaction_count += 1
+                            valid_amount_total += abs(log.amount)
+                    else:
+                        # Transaction doesn't exist anymore, remove the log
+                        logs_to_remove.append(log)
+                
+                # Remove invalid logs and recalculate usage counts
+                for log in logs_to_remove:
+                    db.delete(log)
+                    results['removed_logs'] += 1
+                
+                # Update approval usage counts to match actual valid logs
+                old_used_transactions = approval.used_transactions
+                old_used_amount = approval.used_amount
+                
+                approval.used_transactions = valid_transaction_count
+                approval.used_amount = valid_amount_total
+                
+                if (old_used_transactions != valid_transaction_count or 
+                    abs(old_used_amount - valid_amount_total) > 0.01):
+                    results['usage_corrected'] += 1
+                
+                # Reactivate approval if it was deactivated but now has capacity
+                if logs_to_remove and not approval.is_active:
+                    approval.is_active = True
+                
+                # Check if approval should be deactivated (limits reached)
+                should_deactivate = False
+                if approval.max_transactions is not None and approval.used_transactions >= approval.max_transactions:
+                    should_deactivate = True
+                if approval.max_amount is not None and approval.used_amount >= approval.max_amount:
+                    should_deactivate = True
+                
+                if should_deactivate and approval.is_active:
+                    approval.is_active = False
+                    results['deactivated_approvals'] += 1
+            
+            db.commit()
+            
+            flash(
+                f"Approval re-evaluation completed successfully! "
+                f"Checked {results['checked_approvals']} approvals, "
+                f"deactivated {results['deactivated_approvals']} approvals, "
+                f"removed {results['removed_logs']} invalid logs, "
+                f"reverted {results['reverted_transactions']} transactions, "
+                f"corrected usage on {results['usage_corrected']} approvals.", 
+                "success"
+            )
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error during approval re-evaluation: {str(e)}")
+            flash(f"Error during approval re-evaluation: {str(e)}", "error")
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"Unexpected error in re-evaluation: {str(e)}")
+        flash(f"Unexpected error: {str(e)}", "error")
+    
+    return redirect(url_for('approval_requests'))
+
+
+# Helper functions for approval system
+
+def get_user_accounts_for_approval(db_session):
+    """Get accounts the current user has access to for approval restrictions, grouped by mercury account."""
+    if current_user.has_role('super-admin'):
+        mercury_accounts = db_session.query(MercuryAccount).filter(MercuryAccount.is_active == True).all()
+    else:
+        user = db_session.query(User).get(current_user.id)
+        mercury_accounts = user.mercury_accounts if user and user.mercury_accounts else []
+    
+    # Group accounts by mercury account
+    mercury_account_data = []
+    for mercury_account in mercury_accounts:
+        accounts = db_session.query(Account).filter(
+            Account.mercury_account_id == mercury_account.id,
+            Account.is_active == True
+        ).order_by(Account.name).all()
+        
+        if accounts:  # Only include mercury accounts that have active accounts
+            mercury_account_data.append({
+                'mercury_account': mercury_account,
+                'display_name': mercury_account.name,  # MercuryAccount only has 'name' field
+                'accounts': [{'id': acc.id, 'name': acc.nickname if acc.nickname else acc.name} for acc in accounts]
+            })
+    
+    return mercury_account_data
+
+
+def get_approver_users(db_session):
+    """Get users who can be approvers."""
+    return db_session.query(User).filter(User.is_active == True).all()
+
+
+def get_user_restrictions_with_names(db_session):
+    """Get restrictions with account names for the user."""
+    restrictions = get_user_restrictions(db_session)
+    restriction_data = []
+    
+    for restriction in restrictions:
+        account_names = restriction.get_account_names(db_session)
+        account_names_str = ', '.join(account_names) if account_names else 'No accounts'
+        
+        restriction_data.append({
+            'id': restriction.id,
+            'name': restriction.name,
+            'account_names': account_names_str,
+            'restriction_type': restriction.restriction_type,
+            'amount_threshold': restriction.amount_threshold,
+            'category': restriction.category,
+            'subcategory': restriction.subcategory
+        })
+    
+    return restriction_data
+
+
+def get_user_restrictions(db_session):
+    """Get restrictions for accounts the user has access to."""
+    if current_user.has_role('super-admin'):
+        return db_session.query(TransactionRestriction).filter(
+            TransactionRestriction.is_active == True
+        ).all()
+    else:
+        user = db_session.query(User).get(current_user.id)
+        user_account_ids = [acc.id for acc in user.accounts] if user and user.accounts else []
+        
+        # Filter restrictions that apply to any of the user's accounts
+        restrictions = []
+        all_restrictions = db_session.query(TransactionRestriction).filter(
+            TransactionRestriction.is_active == True
+        ).all()
+        
+        for restriction in all_restrictions:
+            restriction_account_ids = restriction.get_account_list()
+            # Check if any of the restriction's accounts match user's accounts
+            if any(acc_id in user_account_ids for acc_id in restriction_account_ids):
+                restrictions.append(restriction)
+        
+        return restrictions
+
+
+def get_merchants_from_transactions(db_session):
+    """Get unique merchants from transaction history for the current user's accounts."""
+    from sqlalchemy import distinct
+    
+    # Get user's accessible mercury accounts
+    mercury_accounts = db_session.query(MercuryAccount).filter(
+        MercuryAccount.users.contains(current_user)
+    ).all()
+    
+    if not mercury_accounts:
+        return []
+    
+    # Get all account IDs for these mercury accounts
+    account_ids = []
+    for mercury_account in mercury_accounts:
+        accounts = db_session.query(Account).filter_by(
+            mercury_account_id=mercury_account.id,
+            is_active=True
+        ).all()
+        account_ids.extend([acc.id for acc in accounts])
+    
+    if not account_ids:
+        return []
+    
+    # Query for distinct counterparty names
+    merchants = db_session.query(distinct(Transaction.counterparty_name)).filter(
+        Transaction.account_id.in_(account_ids),
+        Transaction.counterparty_name.isnot(None),
+        Transaction.counterparty_name != '',
+        Transaction.counterparty_name != 'Unknown'
+    ).order_by(Transaction.counterparty_name).all()
+    
+    # Extract just the merchant names and filter out any None/empty values
+    merchant_list = []
+    for merchant_tuple in merchants:
+        merchant_name = merchant_tuple[0]
+        if merchant_name and merchant_name.strip():
+            merchant_list.append(merchant_name.strip())
+    
+    return merchant_list
+
+
+def can_approve_request(approval_request, user, db_session):
+    """Check if a user can approve a specific request."""
+    if user.has_role('super-admin'):
+        return True
+    
+    # Check if user is in the restriction's approver list
+    approver_ids = approval_request.restriction.get_approver_list()
+    return user.id in approver_ids
 
 
 # Initialize settings on app startup

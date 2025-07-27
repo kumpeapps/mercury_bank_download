@@ -8,6 +8,8 @@ services:
   mercury-sync:
     build: ./sync_app
     image: mercury-sync:dev
+    environment:
+      TZ: ${TZ:-America/Chicago}
     # Override the image to use local build instead of registry
     
   web-app:
@@ -20,6 +22,7 @@ services:
       FLASK_DEBUG: 1
       # Allow local user registration for development
       USERS_EXTERNALLY_MANAGED: false
+      TZ: ${TZ:-America/Chicago}
     volumes:
       # Add volume mount for development (hot reload)
       - ./web_app:/app
@@ -28,4 +31,3 @@ services:
       - /app/__pycache__
       - /app/models/__pycache__
       - /app/utils/__pycache__
-      - /app/static

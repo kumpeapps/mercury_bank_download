@@ -45,6 +45,13 @@ class UserSettings(Base):
     report_preferences = Column(JSON, nullable=True, default=lambda: {})
     transaction_preferences = Column(JSON, nullable=True, default=lambda: {})
 
+    # Notification preferences
+    email_notifications_enabled = Column(Boolean, default=True, nullable=False)
+    pushover_notifications_enabled = Column(Boolean, default=False, nullable=False)
+    pushover_user_key = Column(String(255), nullable=True)
+    approval_email_notifications = Column(Boolean, default=True, nullable=False)
+    approval_pushover_notifications = Column(Boolean, default=False, nullable=False)
+
     # Timestamps
     created_at = Column(
         DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP")
@@ -75,6 +82,28 @@ class UserSettings(Base):
         """
         return f"<UserSettings(user_id={self.user_id}, primary_mercury_account_id={self.primary_mercury_account_id})>"
 
+    def _ensure_dict(self, value):
+        """
+        Ensure a value is a dictionary, parsing from JSON string if necessary.
+        
+        Args:
+            value: The value to ensure is a dict
+            
+        Returns:
+            dict: The value as a dictionary, or empty dict if conversion fails
+        """
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                import json
+                return json.loads(value)
+            except (json.JSONDecodeError, ValueError):
+                return {}
+        return {}
+
     def get_dashboard_preference(self, key, default=None):
         """
         Get a specific dashboard preference value.
@@ -86,9 +115,10 @@ class UserSettings(Base):
         Returns:
             The preference value or default
         """
-        if not self.dashboard_preferences:
+        preferences = self._ensure_dict(self.dashboard_preferences)
+        if not preferences:
             return default
-        return self.dashboard_preferences.get(key, default)
+        return preferences.get(key, default)
 
     def set_dashboard_preference(self, key, value):
         """
@@ -98,9 +128,11 @@ class UserSettings(Base):
             key (str): The preference key to set
             value: The value to set
         """
-        if not self.dashboard_preferences:
-            self.dashboard_preferences = {}
-        self.dashboard_preferences[key] = value
+        preferences = self._ensure_dict(self.dashboard_preferences)
+        if not preferences:
+            preferences = {}
+        preferences[key] = value
+        self.dashboard_preferences = preferences
 
     def get_report_preference(self, key, default=None):
         """
@@ -113,9 +145,10 @@ class UserSettings(Base):
         Returns:
             The preference value or default
         """
-        if not self.report_preferences:
+        preferences = self._ensure_dict(self.report_preferences)
+        if not preferences:
             return default
-        return self.report_preferences.get(key, default)
+        return preferences.get(key, default)
 
     def set_report_preference(self, key, value):
         """
@@ -125,9 +158,11 @@ class UserSettings(Base):
             key (str): The preference key to set
             value: The value to set
         """
-        if not self.report_preferences:
-            self.report_preferences = {}
-        self.report_preferences[key] = value
+        preferences = self._ensure_dict(self.report_preferences)
+        if not preferences:
+            preferences = {}
+        preferences[key] = value
+        self.report_preferences = preferences
 
     def get_transaction_preference(self, key, default=None):
         """
@@ -140,9 +175,10 @@ class UserSettings(Base):
         Returns:
             The preference value or default
         """
-        if not self.transaction_preferences:
+        preferences = self._ensure_dict(self.transaction_preferences)
+        if not preferences:
             return default
-        return self.transaction_preferences.get(key, default)
+        return preferences.get(key, default)
 
     def set_transaction_preference(self, key, value):
         """
@@ -152,6 +188,8 @@ class UserSettings(Base):
             key (str): The preference key to set
             value: The value to set
         """
-        if not self.transaction_preferences:
-            self.transaction_preferences = {}
-        self.transaction_preferences[key] = value
+        preferences = self._ensure_dict(self.transaction_preferences)
+        if not preferences:
+            preferences = {}
+        preferences[key] = value
+        self.transaction_preferences = preferences

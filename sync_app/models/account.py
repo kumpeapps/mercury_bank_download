@@ -107,6 +107,11 @@ class Account(Base):
         back_populates="accounts"
     )
 
+    # Relationship to transaction approval system
+    # Note: transaction_restrictions now uses account_ids (comma-separated) instead of direct foreign key
+    transaction_approvals = relationship("TransactionApproval", back_populates="account", cascade="all, delete-orphan")
+    approval_rules = relationship("TransactionApprovalRule", back_populates="account", cascade="all, delete-orphan")
+
     def is_receipt_required_for_amount(self, amount, transaction_date=None):
         """
         Check if a receipt is required for a given transaction amount.

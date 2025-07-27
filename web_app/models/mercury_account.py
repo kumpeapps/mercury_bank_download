@@ -113,6 +113,10 @@ class MercuryAccount(Base):
         back_populates="mercury_accounts"
     )
 
+    # Relationship to transaction approval system
+    transaction_restrictions = relationship("TransactionRestriction", back_populates="mercury_account", cascade="all, delete-orphan")
+    approval_rules = relationship("TransactionApprovalRule", back_populates="mercury_account", cascade="all, delete-orphan")
+
     def __repr__(self):
         """
         Return a string representation of the MercuryAccount instance.

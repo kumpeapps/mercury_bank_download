@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}
+    {% if action == 'approve' %}
+        Approve Request
+    {% else %}
+        Deny Request
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-header">
+                    <h3>
+                        {% if action == 'approve' %}
+                            <i class="fas fa-check-circle text-success"></i> Approve Request
+                        {% else %}
+                            <i class="fas fa-times-circle text-danger"></i> Deny Request
+                        {% endif %}
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <!-- Request Details -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <strong>Account:</strong><br>
+                            {{ approval_request.restriction.mercury_account.name }}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Requested by:</strong><br>
+                            {{ approval_request.requested_by.first_name }} {{ approval_request.requested_by.last_name }}
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <strong>Request Type:</strong><br>
+                            {{ approval_request.restriction.restriction_type }}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Max Amount:</strong><br>
+                            {% if approval_request.max_amount %}
+                                ${{ "{:,.2f}".format(approval_request.max_amount) }}
+                            {% else %}
+                                Unlimited
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <strong>Max Transactions:</strong><br>
+                            {% if approval_request.max_transactions %}
+                                {{ approval_request.max_transactions }}
+                            {% else %}
+                                Unlimited
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Valid Period:</strong><br>
+                            {{ approval_request.approval_start_date.strftime('%Y-%m-%d') }} to 
+                            {{ approval_request.approval_end_date.strftime('%Y-%m-%d') }}
+                        </div>
+                    </div>
+                    
+                    {% if approval_request.category_filter %}
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <strong>Category Filter:</strong><br>
+                            {{ approval_request.category_filter }}
+                        </div>
+                        {% if approval_request.subcategory_filter %}
+                        <div class="col-md-6">
+                            <strong>Subcategory Filter:</strong><br>
+                            {{ approval_request.subcategory_filter }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    
+                    {% if approval_request.request_reason %}
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <strong>Request Reason:</strong><br>
+                            <div class="border p-2 bg-light">
+                                {{ approval_request.request_reason }}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Decision Form -->
+                    <form method="POST">
+                        <div class="form-group mb-3">
+                            <label for="approval_notes">
+                                {% if action == 'approve' %}
+                                    Approval Notes (Optional):
+                                {% else %}
+                                    Denial Reason:
+                                {% endif %}
+                            </label>
+                            <textarea class="form-control" id="approval_notes" name="approval_notes" rows="4" 
+                                      placeholder="{% if action == 'approve' %}Add any notes about this approval...{% else %}Please provide a reason for denying this request...{% endif %}"></textarea>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('approval_requests') }}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Back to Requests
+                            </a>
+                            
+                            <button type="submit" class="btn {% if action == 'approve' %}btn-success{% else %}btn-danger{% endif %}">
+                                {% if action == 'approve' %}
+                                    <i class="fas fa-check"></i> Approve Request
+                                {% else %}
+                                    <i class="fas fa-times"></i> Deny Request
+                                {% endif %}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
